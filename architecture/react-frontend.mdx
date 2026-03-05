@@ -1,0 +1,825 @@
+---
+title: React Frontend Architecture
+description: Frontend architecture with React, TypeScript, and Inertia.js
+---
+
+The frontend is built with React 19, TypeScript, and Inertia.js, providing a modern single-page application experience with server-side routing.
+
+## Technology Stack
+
+### Core Libraries
+
+```json title="package.json"
+{
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "^5.7.2",
+    "@inertiajs/react": "^2.1.4",
+    "@tailwindcss/vite": "^4.1.11",
+    "vite": "^7.0.4"
+  }
+}
+```
+
+### UI Component Libraries
+
+- **Radix UI** - Accessible, unstyled component primitives
+  - `@radix-ui/react-dialog` - Modals and dialogs
+  - `@radix-ui/react-dropdown-menu` - Dropdown menus
+  - `@radix-ui/react-select` - Select inputs
+  - `@radix-ui/react-checkbox` - Checkboxes
+  - `@radix-ui/react-avatar` - User avatars
+  - `@radix-ui/react-tooltip` - Tooltips
+
+- **Headless UI** - Additional unstyled components from Tailwind team
+- **Lucide React** - Icon library
+- **React Icons** - Additional icon set
+- **react-big-calendar** - Calendar component for task scheduling
+
+### Styling
+
+- **Tailwind CSS 4.0** - Utility-first CSS framework
+- **class-variance-authority** - Type-safe component variants
+- **clsx** / **tailwind-merge** - Class name utilities
+
+## Directory Structure
+
+```
+resources/js/
+├── app.tsx                    # Application entry point
+├── ssr.tsx                    # Server-side rendering entry
+├── components/                # Reusable UI components
+│   ├── app-header.tsx         # Main navigation header
+│   ├── app-sidebar.tsx        # Sidebar navigation
+│   ├── app-shell.tsx          # Layout wrapper
+│   ├── breadcrumbs.tsx        # Breadcrumb navigation
+│   ├── appearance-dropdown.tsx # Theme switcher
+│   ├── nav-main.tsx           # Main navigation links
+│   ├── nav-footer.tsx         # Footer navigation
+│   ├── input-error.tsx        # Form validation errors
+│   ├── alert-error.tsx        # Error alerts
+│   ├── heading.tsx            # Page headings
+│   └── delete-user.tsx        # User deletion modal
+├── layouts/                   # Page layouts
+│   ├── app-layout.tsx         # Authenticated layout
+│   ├── guest-layout.tsx       # Guest/auth layout
+│   └── settings-layout.tsx    # Settings page layout
+├── pages/                     # Page components (routes)
+│   ├── welcome.tsx            # Landing page
+│   ├── dashboard.tsx          # Main dashboard
+│   ├── auth/                  # Authentication pages
+│   │   ├── login.tsx
+│   │   ├── register.tsx
+│   │   └── forgot-password.tsx
+│   ├── pisua/                 # Apartment pages
+│   │   ├── aukeratu.tsx       # Select apartment
+│   │   ├── sortu.tsx          # Create apartment
+│   │   └── erakutsi.tsx       # List apartments
+│   ├── pisuaIkusi/            # Apartment detail
+│   │   └── pisua_ikusi.tsx    # Members view
+│   ├── Gastuak/               # Expenses pages
+│   │   ├── GastuakPage.tsx    # Expense list
+│   │   ├── AddGastoForm.tsx   # Add expense
+│   │   └── EditGastoForm.tsx  # Edit expense
+│   ├── Zereginak/             # Tasks pages
+│   │   ├── index.tsx          # Task calendar
+│   │   └── create.tsx         # Create task
+│   └── settings/              # User settings
+│       ├── profile.tsx
+│       ├── password.tsx
+│       └── two-factor.tsx
+├── hooks/                     # Custom React hooks
+│   ├── use-appearance.ts      # Dark/light mode
+│   └── use-route.ts           # Routing utilities
+├── lib/                       # Utility functions
+│   └── utils.ts               # Helper functions
+└── types/                     # TypeScript definitions
+    ├── index.d.ts             # Global types
+    └── inertia.d.ts           # Inertia types
+```
+
+## Application Entry Point
+
+```tsx title="resources/js/app.tsx"
+import { createInertiaApp } from '@inertiajs/react';
+import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { initializeTheme } from './hooks/use-appearance';
+
+const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+
+createInertiaApp({
+    title: (title) => (title ? `${title} - ${appName}` : appName),
+    
+    // Dynamically resolve page components
+    resolve: (name) =>
+        resolvePageComponent(
+            `./pages/${name}.tsx`,
+            import.meta.glob('./pages/**/*.tsx'),
+        ),
+    
+    setup({ el, App, props }) {
+        const root = createRoot(el);
+        root.render(
+            <StrictMode>
+                <App {...props} />
+            </StrictMode>
+        );
+    },
+    
+    progress: {
+        color: '#4B5563',  // Loading bar color
+    },
+});
+
+// Initialize dark/light mode
+initializeTheme();
+```
+
+**Key Features:**
+- Dynamic page component resolution with code splitting
+- React 19 Strict Mode for development warnings
+- Progress bar for navigation transitions
+- Theme initialization on load
+
+## Inertia.js Integration
+
+### How Inertia Works
+
+Inertia.js bridges Laravel and React without building a separate API:
+
+```
+1. User clicks link/submits form
+   ↓
+2. Inertia intercepts and makes XHR request
+   ↓
+3. Laravel controller processes request
+   ↓
+4. Controller returns Inertia::render('Page', $props)
+   ↓
+5. Inertia sends JSON response with component + props
+   ↓
+6. React renders new component with props
+   ↓
+7. Browser URL updates (no full reload)
+```
+
+### Shared Props
+
+Data available to all pages via middleware:
+
+```tsx
+import { usePage } from '@inertiajs/react';
+
+function Component() {
+    const { auth, flash, pisua } = usePage().props;
+
+    return (
+        <div>
+            <p>User: {auth.user?.name}</p>
+            <p>Current Apartment: {pisua.izena}</p>
+            {flash.message && <Alert>{flash.message}</Alert>}
+        </div>
+    );
+}
+```
+
+### Page Component Pattern
+
+```tsx title="pages/dashboard.tsx"
+import { Head } from '@inertiajs/react';
+import AppLayout from '@/layouts/app-layout';
+
+interface Props {
+    pisuak: Piso[];
+    stats: {
+        totalGastos: number;
+        totalZereginak: number;
+    };
+}
+
+export default function Dashboard({ pisuak, stats }: Props) {
+    return (
+        <AppLayout>
+            <Head title="Dashboard" />
+            
+            <div className="p-6">
+                <h1 className="text-2xl font-bold">Dashboard</h1>
+                
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                    <StatCard label="Total Expenses" value={stats.totalGastos} />
+                    <StatCard label="Active Tasks" value={stats.totalZereginak} />
+                </div>
+                
+                <ApartmentList pisuak={pisuak} />
+            </div>
+        </AppLayout>
+    );
+}
+```
+
+### Navigation
+
+```tsx
+import { Link, router } from '@inertiajs/react';
+
+// Declarative navigation
+<Link href="/dashboard" className="nav-link">
+    Dashboard
+</Link>
+
+// Programmatic navigation
+router.visit('/dashboard');
+
+// Form submission
+router.post('/gastuak/addGastua', formData);
+
+// DELETE request
+router.delete(`/gastos/deleteGasto/${id}`);
+```
+
+## Key Pages
+
+### Dashboard
+
+Main landing page after authentication showing apartment selection and statistics.
+
+```tsx title="pages/dashboard.tsx" (simplified)
+export default function Dashboard({ pisuak }) {
+    const { pisua } = usePage().props;
+
+    if (!pisua.id) {
+        return <ApartmentSelection />;
+    }
+
+    return (
+        <AppLayout>
+            <Head title="Dashboard" />
+            <div className="space-y-6">
+                <StatCards />
+                <RecentExpenses />
+                <UpcomingTasks />
+            </div>
+        </AppLayout>
+    );
+}
+```
+
+### Gastuak (Expenses)
+
+Expense tracking with month filtering and debt calculation.
+
+```tsx title="pages/Gastuak/GastuakPage.tsx" (conceptual)
+import { useState } from 'react';
+import { router } from '@inertiajs/react';
+
+interface Props {
+    piso: Piso & {
+        inquilinos: User[];
+        gastos: Gasto[];
+        ordainketak: Ordainketa[];
+    };
+    filters: {
+        fecha?: string;
+    };
+}
+
+export default function GastuakPage({ piso, filters }: Props) {
+    const [monthFilter, setMonthFilter] = useState(filters.fecha || '');
+
+    const handleFilterChange = (fecha: string) => {
+        router.get('/gastuak', { fecha }, { preserveState: true });
+    };
+
+    // Calculate debts between tenants
+    const debts = calculateDebts(piso.gastos, piso.inquilinos, piso.ordainketak);
+
+    return (
+        <AppLayout>
+            <Head title="Expenses" />
+            
+            <div className="space-y-6">
+                <MonthPicker value={monthFilter} onChange={handleFilterChange} />
+                
+                <ExpenseList gastos={piso.gastos} />
+                
+                <DebtSummary debts={debts} />
+                
+                <Link href="/gastuak/ikusi" className="btn btn-primary">
+                    Add Expense
+                </Link>
+            </div>
+        </AppLayout>
+    );
+}
+
+function calculateDebts(gastos, inquilinos, ordainketak) {
+    // Complex debt calculation logic
+    // Returns array of { deudor, acreedor, cantidad }
+}
+```
+
+### Zereginak (Tasks)
+
+Task management with calendar view using `react-big-calendar`.
+
+```tsx title="pages/Zereginak/index.tsx" (conceptual)
+import { Calendar, momentLocalizer } from 'react-big-calendar';
+import moment from 'moment';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+const localizer = momentLocalizer(moment);
+
+interface Props {
+    zereginak: Zereginak[];
+}
+
+export default function ZereginakIndex({ zereginak }: Props) {
+    // Transform tasks to calendar events
+    const events = zereginak.flatMap(task =>
+        task.erabiltzaileak.map(user => ({
+            title: task.izena,
+            start: new Date(user.pivot.hasiera_data),
+            end: new Date(user.pivot.amaiera_data),
+            resource: { task, user },
+        }))
+    );
+
+    const handleSelectEvent = (event) => {
+        router.visit(`/zereginak/${event.resource.task.id}/editatu`);
+    };
+
+    return (
+        <AppLayout>
+            <Head title="Tasks" />
+            
+            <div className="h-screen">
+                <Calendar
+                    localizer={localizer}
+                    events={events}
+                    onSelectEvent={handleSelectEvent}
+                    views={['month', 'week', 'day']}
+                    defaultView="month"
+                />
+            </div>
+            
+            <Link href="/zereginak/sortu" className="btn btn-primary">
+                Create Task
+            </Link>
+        </AppLayout>
+    );
+}
+```
+
+### Pisua Selection
+
+Apartment selection/creation flow.
+
+```tsx title="pages/pisua/aukeratu.tsx" (conceptual)
+import { useState } from 'react';
+import { router } from '@inertiajs/react';
+
+interface Props {
+    hasPisos: boolean;
+}
+
+export default function Aukeratu({ hasPisos }: Props) {
+    const [kodigoa, setKodigoa] = useState('');
+
+    const handleJoin = (e: FormEvent) => {
+        e.preventDefault();
+        router.post('/pisua/batu', { kodigoa });
+    };
+
+    return (
+        <GuestLayout>
+            <Head title="Select Apartment" />
+            
+            <div className="space-y-6">
+                <h1>Select an Apartment</h1>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    {/* Join with code */}
+                    <Card>
+                        <h2>Join Existing</h2>
+                        <form onSubmit={handleJoin}>
+                            <input
+                                type="text"
+                                placeholder="Enter 5-digit code"
+                                value={kodigoa}
+                                onChange={(e) => setKodigoa(e.target.value)}
+                                maxLength={5}
+                            />
+                            <button type="submit">Join</button>
+                        </form>
+                    </Card>
+                    
+                    {/* Create new */}
+                    <Card>
+                        <h2>Create New</h2>
+                        <Link href="/pisua/sortu" className="btn">
+                            Create Apartment
+                        </Link>
+                    </Card>
+                </div>
+                
+                {hasPisos && (
+                    <Link href="/pisua/erakutsi">
+                        View My Apartments
+                    </Link>
+                )}
+            </div>
+        </GuestLayout>
+    );
+}
+```
+
+## Layouts
+
+### App Layout
+
+Main authenticated layout with sidebar and header.
+
+```tsx title="layouts/app-layout.tsx" (conceptual)
+import { PropsWithChildren } from 'react';
+import AppHeader from '@/components/app-header';
+import AppSidebar from '@/components/app-sidebar';
+
+export default function AppLayout({ children }: PropsWithChildren) {
+    return (
+        <div className="flex h-screen">
+            <AppSidebar />
+            
+            <div className="flex-1 flex flex-col">
+                <AppHeader />
+                
+                <main className="flex-1 overflow-auto bg-gray-50">
+                    {children}
+                </main>
+            </div>
+        </div>
+    );
+}
+```
+
+## Component Examples
+
+### Form with Validation
+
+```tsx
+import { useForm } from '@inertiajs/react';
+import InputError from '@/components/input-error';
+
+export default function AddGastoForm({ usuarios }) {
+    const { data, setData, post, processing, errors } = useForm({
+        Nombre: '',
+        Cantidad: '',
+        Fecha: '',
+        IdUsuario: '',
+    });
+
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
+        post('/gastuak/addGastua');
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <label>Expense Name</label>
+                <input
+                    type="text"
+                    value={data.Nombre}
+                    onChange={(e) => setData('Nombre', e.target.value)}
+                />
+                <InputError message={errors.Nombre} />
+            </div>
+            
+            <div>
+                <label>Amount</label>
+                <input
+                    type="number"
+                    step="0.01"
+                    value={data.Cantidad}
+                    onChange={(e) => setData('Cantidad', e.target.value)}
+                />
+                <InputError message={errors.Cantidad} />
+            </div>
+            
+            <div>
+                <label>Date</label>
+                <input
+                    type="date"
+                    value={data.Fecha}
+                    onChange={(e) => setData('Fecha', e.target.value)}
+                />
+                <InputError message={errors.Fecha} />
+            </div>
+            
+            <div>
+                <label>Paid By</label>
+                <select
+                    value={data.IdUsuario}
+                    onChange={(e) => setData('IdUsuario', e.target.value)}
+                >
+                    <option value="">Select user</option>
+                    {usuarios.map((user) => (
+                        <option key={user.id} value={user.id}>
+                            {user.name}
+                        </option>
+                    ))}
+                </select>
+                <InputError message={errors.IdUsuario} />
+            </div>
+            
+            <button type="submit" disabled={processing}>
+                {processing ? 'Saving...' : 'Add Expense'}
+            </button>
+        </form>
+    );
+}
+```
+
+### Modal with Radix UI
+
+```tsx
+import * as Dialog from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
+
+interface Props {
+    open: boolean;
+    onClose: () => void;
+    gasto: Gasto;
+}
+
+export function DeleteGastoModal({ open, onClose, gasto }: Props) {
+    const handleDelete = () => {
+        router.delete(`/gastos/deleteGasto/${gasto.IdGasto}`, {
+            onSuccess: () => onClose(),
+        });
+    };
+
+    return (
+        <Dialog.Root open={open} onOpenChange={onClose}>
+            <Dialog.Portal>
+                <Dialog.Overlay className="fixed inset-0 bg-black/50" />
+                <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 max-w-md">
+                    <Dialog.Title className="text-xl font-bold">
+                        Delete Expense
+                    </Dialog.Title>
+                    
+                    <Dialog.Description className="mt-2 text-gray-600">
+                        Are you sure you want to delete "{gasto.Nombre}"? This action cannot be undone.
+                    </Dialog.Description>
+                    
+                    <div className="flex gap-3 mt-6 justify-end">
+                        <button onClick={onClose} className="btn btn-secondary">
+                            Cancel
+                        </button>
+                        <button onClick={handleDelete} className="btn btn-danger">
+                            Delete
+                        </button>
+                    </div>
+                    
+                    <Dialog.Close asChild>
+                        <button className="absolute top-4 right-4">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </Dialog.Close>
+                </Dialog.Content>
+            </Dialog.Portal>
+        </Dialog.Root>
+    );
+}
+```
+
+## Custom Hooks
+
+### useAppearance (Dark Mode)
+
+```tsx title="hooks/use-appearance.ts"
+import { useEffect, useState } from 'react';
+
+type Appearance = 'light' | 'dark' | 'system';
+
+export function useAppearance() {
+    const [appearance, setAppearance] = useState<Appearance>(
+        () => (localStorage.getItem('appearance') as Appearance) || 'system'
+    );
+
+    useEffect(() => {
+        const root = document.documentElement;
+        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        
+        const isDark = appearance === 'dark' || 
+                      (appearance === 'system' && systemPrefersDark);
+        
+        root.classList.toggle('dark', isDark);
+        localStorage.setItem('appearance', appearance);
+    }, [appearance]);
+
+    return { appearance, setAppearance };
+}
+
+export function initializeTheme() {
+    const appearance = localStorage.getItem('appearance') || 'system';
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = appearance === 'dark' || (appearance === 'system' && systemPrefersDark);
+    
+    document.documentElement.classList.toggle('dark', isDark);
+}
+```
+
+## TypeScript Types
+
+```tsx title="types/index.d.ts"
+// Global types
+export interface User {
+    id: number;
+    name: string;
+    email: string;
+    email_verified_at?: string;
+    two_factor_confirmed_at?: string;
+}
+
+export interface Piso {
+    id: number;
+    izena: string;
+    kodigoa: string;
+    odoo_id?: number;
+    synced: boolean;
+    sync_error?: string;
+    user_id: number;
+    created_at: string;
+    updated_at: string;
+    inquilinos?: User[];
+    gastos?: Gasto[];
+}
+
+export interface Gasto {
+    IdGasto: number;
+    IdUsuario: number;
+    IdPiso: number;
+    Cantidad: string;
+    Nombre: string;
+    Fecha: string;
+    odoo_id?: number;
+    synced: boolean;
+    usuario?: User;
+    piso?: Piso;
+}
+
+export interface Zereginak {
+    id: number;
+    izena: string;
+    deskripzioa?: string;
+    pisua_id: number;
+    egoera: string;
+    odoo_id?: number;
+    synced: boolean;
+    erabiltzaileak?: User[];
+}
+
+export interface PageProps {
+    auth: {
+        user: User;
+    };
+    flash: {
+        message?: string;
+    };
+    pisua: {
+        id?: number;
+        izena?: string;
+    };
+}
+```
+
+## Build Configuration
+
+### Vite Config
+
+```ts title="vite.config.ts" (conceptual)
+import { defineConfig } from 'vite';
+import laravel from 'laravel-vite-plugin';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+    plugins: [
+        laravel({
+            input: ['resources/css/app.css', 'resources/js/app.tsx'],
+            ssr: 'resources/js/ssr.tsx',
+            refresh: true,
+        }),
+        react({
+            babel: {
+                plugins: [['babel-plugin-react-compiler']],
+            },
+        }),
+    ],
+    resolve: {
+        alias: {
+            '@': '/resources/js',
+        },
+    },
+});
+```
+
+### Scripts
+
+```json title="package.json"
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:ssr": "vite build && vite build --ssr",
+    "format": "prettier --write resources/",
+    "lint": "eslint . --fix",
+    "types": "tsc --noEmit"
+  }
+}
+```
+
+## State Management
+
+7POINTS.NET uses **server-driven state** via Inertia.js instead of client-side state management libraries (Redux, Zustand, etc.).
+
+### Why Server-Driven State?
+
+- **Single source of truth** - Database is the state
+- **No synchronization issues** - Server always sends current data
+- **Simpler architecture** - No need for actions, reducers, store
+- **Better for SEO** - Server-rendered initial state
+
+### Client State (React Hooks)
+
+Only UI-specific state is managed client-side:
+
+```tsx
+// Form state
+const { data, setData } = useForm({ ... });
+
+// UI state
+const [isModalOpen, setIsModalOpen] = useState(false);
+const [selectedMonth, setSelectedMonth] = useState('');
+
+// Derived state
+const totalExpenses = useMemo(
+    () => gastos.reduce((sum, g) => sum + parseFloat(g.Cantidad), 0),
+    [gastos]
+);
+```
+
+## Performance Optimization
+
+### Code Splitting
+
+Vite automatically splits code by route:
+
+```tsx
+// Each page is a separate chunk
+import.meta.glob('./pages/**/*.tsx')
+
+// Result:
+// - dashboard.[hash].js
+// - gastuak.[hash].js
+// - zereginak.[hash].js
+```
+
+### Lazy Loading
+
+```tsx
+import { lazy, Suspense } from 'react';
+
+const Calendar = lazy(() => import('react-big-calendar'));
+
+export default function TasksPage() {
+    return (
+        <Suspense fallback={<LoadingSpinner />}>
+            <Calendar {...props} />
+        </Suspense>
+    );
+}
+```
+
+### Preserve Scroll
+
+```tsx
+router.visit('/gastuak', {
+    preserveScroll: true,  // Don't scroll to top
+    preserveState: true,   // Keep component state
+});
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Laravel Backend" icon="server" href="/architecture/laravel-backend">
+    Learn how controllers pass data to React components
+  </Card>
+  
+  <Card title="Architecture Overview" icon="sitemap" href="/architecture/overview">
+    See how frontend fits into overall system architecture
+  </Card>
+</CardGroup>

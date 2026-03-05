@@ -1,0 +1,262 @@
+---
+title: Architecture Overview
+description: High-level architecture of 7POINTS.NET platform
+---
+
+7POINTS.NET is built on a modern, scalable three-tier architecture that combines Laravel backend, React frontend, and Odoo ERP integration to manage shared apartments efficiently.
+
+## System Architecture
+
+The platform follows a **three-tier architecture** with clear separation of concerns:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Client Layer (Browser)                  │
+│                   React + Inertia.js (SPA)                  │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ HTTP/HTTPS
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Application Layer (Server)                 │
+│     Laravel 12 + Inertia.js SSR + Laravel Fortify          │
+│              (Business Logic & API Gateway)                 │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+        ┌─────────────┴─────────────┐
+        ▼                           ▼
+┌──────────────────┐       ┌──────────────────┐
+│  PostgreSQL DB   │       │   Odoo ERP 17    │
+│  (Primary Data)  │       │  (Financial/Sync)│
+└──────────────────┘       └──────────────────┘
+```
+
+## Technology Stack
+
+### Frontend
+- **React 19.2** - Modern UI library with hooks and concurrent features
+- **TypeScript 5.7** - Type-safe development
+- **Inertia.js 2.1** - Server-driven single-page application framework
+- **Tailwind CSS 4.0** - Utility-first CSS framework
+- **Radix UI** - Accessible component primitives
+- **Vite 7.0** - Fast build tool and dev server
+
+### Backend
+- **Laravel 12** - PHP 8.2 framework for backend logic
+- **Laravel Fortify** - Authentication scaffolding with 2FA support
+- **Inertia.js Laravel** - Server-side rendering adapter
+- **Queue System** - Async job processing for Odoo sync
+
+### ERP Integration
+- **Odoo 17.0** - Open-source ERP for financial management
+- **Custom Odoo Modules** - Domain-specific extensions
+- **XML-RPC API** - Communication protocol between Laravel and Odoo
+
+### Database
+- **PostgreSQL 15** - Primary relational database
+- Shared between Laravel and Odoo for data consistency
+
+### Infrastructure
+- **Docker** - Containerized development and deployment
+- **AWS** - Cloud hosting platform (planned)
+
+## Container Architecture
+
+The application runs in three main Docker containers:
+
+```yaml
+services:
+  laravel_app:     # Laravel + React frontend
+    - Port: 8080
+    - PHP 8.2 FPM
+    
+  odoo:            # Odoo ERP system
+    - Port: 8069
+    - Custom addons mounted
+    
+  postgres:        # Shared database
+    - Port: 5432
+    - Used by both Laravel and Odoo
+```
+
+## Data Flow Architecture
+
+### Request Flow (User Actions)
+
+1. **User Interaction** → React component (e.g., create expense)
+2. **Inertia Request** → Laravel controller endpoint
+3. **Business Logic** → Laravel model operations
+4. **Database Write** → PostgreSQL transaction
+5. **Async Sync** → Laravel queue job dispatched
+6. **ERP Update** → Odoo API call (XML-RPC)
+7. **Response** → Inertia renders updated page
+
+### Authentication Flow
+
+```
+1. User submits credentials
+   ↓
+2. Laravel Fortify validates
+   ↓
+3. Session created (cookie-based)
+   ↓
+4. Optional 2FA verification
+   ↓
+5. Redirect to dashboard
+   ↓
+6. Inertia maintains SPA navigation
+```
+
+## Key Architectural Decisions
+
+### Why Laravel?
+- **Mature PHP framework** with excellent documentation
+- **Built-in authentication** via Fortify (sessions, 2FA)
+- **Queue system** for async Odoo synchronization
+- **Eloquent ORM** for clean database interactions
+- **Middleware support** for request handling
+
+### Why React with Inertia.js?
+- **SPA experience** without separate API complexity
+- **Server-driven routing** - routes defined in Laravel
+- **SSR support** for better SEO and initial load
+- **Type safety** with TypeScript
+- **No need for REST/GraphQL** - direct controller responses
+
+### Why Odoo ERP?
+- **Financial module** for expense tracking and reporting
+- **Open source** with extensive customization
+- **Built-in accounting** features (invoices, payments)
+- **Modular architecture** - only use what's needed
+- **Active community** and extensive documentation
+
+### Why PostgreSQL?
+- **ACID compliance** for financial data integrity
+- **Native JSON support** for flexible data structures
+- **Odoo compatibility** (Odoo requires PostgreSQL)
+- **Advanced features** (triggers, views, stored procedures)
+
+## Database Architecture
+
+The PostgreSQL database serves both Laravel and Odoo:
+
+### Laravel Tables
+- `users` - User accounts with authentication
+- `pisua` - Apartment/flat records
+- `piso_user` - Many-to-many pivot (users ↔ apartments)
+- `gastos` - Expense records
+- `zereginak` - Task management
+- `egin` - Task assignments pivot table
+- `ordainketas` - Payment settlements
+
+### Odoo Tables
+- Managed by Odoo ORM
+- Custom modules extend `hr.expense`, `res.partner`, etc.
+- Synchronized via `odoo_id` foreign key fields
+
+### Synchronization Strategy
+
+Every Laravel model that syncs with Odoo has three fields:
+```php
+'odoo_id' => 'integer|nullable',     // Odoo record ID
+'synced' => 'boolean|default:false', // Sync status
+'sync_error' => 'text|nullable',     // Error messages
+```
+
+**Sync Flow:**
+1. Create/update record in Laravel (PostgreSQL)
+2. Dispatch queue job (e.g., `SyncGastoToOdoo`)
+3. Job calls Odoo XML-RPC API
+4. On success: Update `odoo_id` and mark `synced = true`
+5. On failure: Log error in `sync_error` field
+
+## Security Architecture
+
+### Authentication
+- **Session-based** authentication (Laravel Sanctum/Fortify)
+- **2FA support** via Laravel Fortify
+- **Password hashing** using bcrypt
+- **CSRF protection** on all state-changing requests
+
+### Authorization
+- **Laravel Gates & Policies** for resource access control
+- **Role-based permissions** (coordinator vs. normal tenant)
+- Stored in `piso_user.mota` pivot field:
+  - `koordinatzailea` - Apartment coordinator (admin)
+  - `normala` - Regular tenant
+
+### Data Protection
+- **Environment variables** for sensitive credentials
+- **Database encryption** for passwords
+- **HTTPS only** in production
+- **Docker network isolation** between services
+
+## Deployment Architecture
+
+### Development Environment
+```
+Docker Compose (local):
+- laravel_app:8080
+- odoo:8069  
+- postgres:5432
+```
+
+### Production (Planned AWS)
+```
+AWS Infrastructure:
+- EC2/ECS for Laravel containers
+- RDS PostgreSQL for database
+- S3 for static assets
+- CloudFront CDN
+- Load balancer for scaling
+- Odoo on dedicated instance
+```
+
+## Scalability Considerations
+
+### Horizontal Scaling
+- **Stateless Laravel app** - multiple instances behind load balancer
+- **Shared PostgreSQL** - managed RDS with read replicas
+- **Queue workers** - separate containers for async jobs
+
+### Performance Optimization
+- **Vite code splitting** - lazy load React components
+- **Database indexing** on foreign keys and query columns
+- **Laravel query optimization** - eager loading relationships
+- **CDN for assets** - static files served from edge locations
+
+### Caching Strategy (Future)
+- **Redis** for session storage
+- **Query caching** for frequently accessed data
+- **Odoo API response caching** to reduce external calls
+
+## Monitoring and Logging
+
+### Laravel Logging
+- **Laravel Pail** for real-time log viewing
+- **Queue job failures** tracked in `failed_jobs` table
+- **Sync errors** stored in model `sync_error` fields
+
+### Error Handling
+- **Try-catch** in sync jobs with graceful degradation
+- **Re-queue** failed jobs with exponential backoff
+- **User notifications** for persistent sync failures
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Laravel Backend" icon="server" href="/architecture/laravel-backend">
+    Deep dive into Laravel structure, models, controllers, and API design
+  </Card>
+  
+  <Card title="React Frontend" icon="react" href="/architecture/react-frontend">
+    Frontend architecture, components, and Inertia.js integration
+  </Card>
+  
+  <Card title="Odoo Integration" icon="link" href="/architecture/odoo-integration">
+    ERP integration strategy and custom module development
+  </Card>
+  
+  <Card title="Database Schema" icon="database" href="/architecture/database-schema">
+    Complete database design and relationship diagrams
+  </Card>
+</CardGroup>

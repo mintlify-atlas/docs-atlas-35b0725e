@@ -1,0 +1,156 @@
+---
+title: Welcome to 7POINTS.NET
+description: A shared apartment management platform for university students to organize tasks, track expenses, and coordinate living together.
+---
+
+<div style={{
+  background: 'linear-gradient(135deg, #ef7025 0%, #4fa1ab 100%)',
+  borderRadius: '20px',
+  padding: '48px 32px',
+  marginBottom: '32px',
+  color: 'white'
+}}>
+  <h1 style={{ fontSize: '48px', fontWeight: '400', marginBottom: '16px', color: 'white' }}>
+    7POINTS.NET (Pisukide)
+  </h1>
+  <p style={{ fontSize: '24px', marginBottom: '24px', opacity: '0.95' }}>
+    Simplify shared apartment living with powerful expense tracking, task management, and coordination tools.
+  </p>
+  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+    <a href="/quickstart" style={{
+      background: '#1a73e8',
+      color: 'white',
+      padding: '12px 32px',
+      borderRadius: '20px',
+      textDecoration: 'none',
+      fontWeight: '500',
+      display: 'inline-block'
+    }}>
+      Get Started
+    </a>
+    <a href="https://github.com/ikerea/7POINTS.NET" style={{
+      background: 'rgba(255, 255, 255, 0.2)',
+      color: 'white',
+      padding: '12px 32px',
+      borderRadius: '20px',
+      textDecoration: 'none',
+      fontWeight: '500',
+      display: 'inline-block',
+      border: '1px solid rgba(255, 255, 255, 0.3)'
+    }}>
+      View on GitHub
+    </a>
+  </div>
+</div>
+
+## What is 7POINTS.NET?
+
+7POINTS.NET (also known as "Pisukide") is a comprehensive web application designed specifically for university students living in shared apartments. Born from the 7POINTS team at Migel Altuna LHII, this platform addresses the daily challenges that roommates face when managing household tasks, expenses, and coordination.
+
+### The Problem We Solve
+
+Living with roommates often leads to confusion and conflicts around:
+- **Expense Management** - Who paid for what? Who owes whom?
+- **Task Distribution** - Who's responsible for cleaning this week?
+- **Communication** - How do we stay coordinated without constant messages?
+- **Transparency** - How can we ensure fair contribution from everyone?
+
+7POINTS.NET provides a unified solution that brings clarity, fairness, and ease to shared apartment management.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Expense Tracking" icon="receipt" href="/features/expenses">
+    Automatically track shared expenses and calculate who owes what with visual debt indicators
+  </Card>
+  <Card title="Task Management" icon="list-check" href="/features/tasks">
+    Assign and schedule household chores with an interactive calendar view
+  </Card>
+  <Card title="Apartment Management" icon="house" href="/features/apartments">
+    Create or join apartments with unique codes and manage roommate access
+  </Card>
+  <Card title="Role-Based Access" icon="user-shield" href="/features/members">
+    Coordinators and members with different permission levels for smooth management
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="Create or Join an Apartment">
+    Start by creating a new apartment or joining an existing one using a unique apartment code shared by your roommates.
+  </Step>
+  <Step title="Add Roommates">
+    Invite your flatmates to join using the apartment code. Assign coordinator roles to trusted members.
+  </Step>
+  <Step title="Track Expenses">
+    Log shared expenses like groceries, utilities, and rent. The system automatically calculates who owes what.
+  </Step>
+  <Step title="Manage Tasks">
+    Create household tasks, assign them to roommates, and track completion with the calendar view.
+  </Step>
+  <Step title="Stay Coordinated">
+    Everyone has real-time visibility into expenses and tasks, eliminating confusion and conflicts.
+  </Step>
+</Steps>
+
+## Technology Stack
+
+7POINTS.NET is built with modern, reliable technologies:
+
+- **Frontend**: React with TypeScript, Tailwind CSS, and Inertia.js
+- **Backend**: Laravel (PHP 8.2) with Fortify for authentication
+- **ERP Integration**: Odoo 17.0 for financial management and data centralization
+- **Database**: PostgreSQL for robust data storage
+- **Deployment**: Docker containers for consistent environments
+
+<Note>
+The platform supports multiple languages, including Basque and Spanish, making it accessible to students across different regions.
+</Note>
+
+## Built for Students
+
+This platform was developed as a student project at Migel Altuna LHII by the 7POINTS team (Igor Viyuela, Iker Eguizabal, and Luken Franco). It's designed by students, for students, addressing real-world problems faced in shared living situations.
+
+### Key Design Principles
+
+- **Accessibility**: WCAG 2.1 AA compliant with EqualWeb integration for inclusive access
+- **Usability**: Clean, intuitive interface with color-coded visual feedback
+- **Transparency**: All expenses and tasks visible to all apartment members
+- **Fairness**: Automatic debt calculation ensures equitable cost sharing
+
+## Quick Start
+
+Ready to get started? Check out our [Quickstart Guide](/quickstart) to set up your first apartment in minutes.
+
+<CardGroup cols={2}>
+  <Card title="Installation Guide" icon="download" href="/installation">
+    Set up your development environment with PHP, Composer, Node.js, and Docker
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/authentication">
+    Explore the REST API for building integrations
+  </Card>
+  <Card title="Architecture Overview" icon="sitemap" href="/architecture/overview">
+    Learn how Laravel, React, and Odoo work together
+  </Card>
+  <Card title="Deployment Guide" icon="rocket" href="/deployment/docker">
+    Deploy with Docker and configure your production environment
+  </Card>
+</CardGroup>
+
+## Community and Support
+
+7POINTS.NET is licensed under Creative Commons BY-NC-SA 4.0, making it free for non-commercial use while requiring attribution and share-alike terms.
+
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/ikerea/7POINTS.NET">
+    View source code, report issues, and contribute
+  </Card>
+  <Card title="Documentation" icon="book" href="/quickstart">
+    Comprehensive guides for users and developers
+  </Card>
+</CardGroup>
+
+<Warning>
+This application is designed for educational and non-commercial use. For commercial deployment, please review the licensing terms.
+</Warning>

@@ -1,0 +1,165 @@
+---
+title: 'Creating an Apartment'
+description: 'Step-by-step guide to creating a new shared apartment in 7POINTS.NET'
+icon: 'house-circle-plus'
+---
+
+This guide walks you through the process of creating a new apartment (pisu) in 7POINTS.NET, which will make you the coordinator with full management permissions.
+
+## When to Create an Apartment
+
+You should create a new apartment when:
+- You're the first person setting up your shared living space
+- You want to be the initial coordinator
+- You need a fresh apartment code to share with roommates
+
+<Note>
+If you've been invited to an existing apartment, see [Joining an Apartment](/guides/joining-apartment) instead.
+</Note>
+
+## Step-by-Step Process
+
+<Steps>
+  <Step title="Navigate to Apartment Creation">
+    After logging in, if you don't have any apartments yet, you'll see the selection screen. Click **"Pisu berria sortu"** (Create new apartment) or navigate to `/pisua/sortu`.
+    
+    If you already have apartments, go to the apartment list (`/pisua/erakutsi`) and look for the option to create a new one.
+  </Step>
+
+  <Step title="Enter Apartment Details">
+    On the creation form, you'll need to provide:
+    
+    - **Apartment Name** (Pisuaren Izena): Choose a memorable name for your apartment
+      - Maximum 25 characters
+      - Examples: "Campus Apartment", "Downtown Flat", "Student House"
+    
+    <Tip>
+    Choose a name that's easy to recognize and identifies your living space clearly. You can always change it later.
+    </Tip>
+  </Step>
+
+  <Step title="Automatic Code Generation">
+    When you submit the form, the system automatically generates a unique 5-digit apartment code for you. You don't need to create or choose this code yourself.
+    
+    The code is used to:
+    - Identify your apartment uniquely in the system
+    - Allow roommates to join your apartment
+    - Share with others who need access
+    
+    <Note>
+    The apartment code is generated as a 5-digit number (e.g., "00123", "45678"). It's guaranteed to be unique across the platform.
+    </Note>
+  </Step>
+
+  <Step title="Confirmation and Initial Setup">
+    After creation:
+    - You're automatically added as the **coordinator** (koordinatzailea)
+    - The apartment is set as your active apartment
+    - You're redirected to the dashboard
+    - The apartment is synchronized with the Odoo backend system
+    
+    You can now start:
+    - [Inviting roommates](/guides/joining-apartment) by sharing your apartment code
+    - [Creating tasks](/guides/task-management)
+    - [Managing expenses](/guides/managing-expenses)
+  </Step>
+</Steps>
+
+## Inviting Your First Roommates
+
+Once your apartment is created, you'll want to invite roommates:
+
+1. **Find Your Apartment Code**:
+   - Go to "Kideak" (Members) from the navigation
+   - Your apartment code is displayed at the bottom right
+   - Click the copy icon to copy it to your clipboard
+
+2. **Share the Code**:
+   - Send the 5-digit code to your roommates via messaging, email, or in person
+   - They'll use this code to join your apartment
+
+3. **Wait for Members to Join**:
+   - Roommates can join immediately using the code
+   - No approval needed - anyone with the code can join
+   - You'll see new members appear in the members list
+
+<Warning>
+Keep your apartment code secure. Anyone with the code can join your apartment. Only share it with trusted roommates.
+</Warning>
+
+## After Creation
+
+### What You Can Do as Coordinator
+
+As the apartment creator, you automatically become the coordinator with special permissions:
+
+- Edit apartment details (name and code)
+- Delete the entire apartment
+- Promote other members to coordinator
+- Remove members from the apartment
+- All regular member permissions
+
+See [Member Roles](/guides/member-roles) for complete details.
+
+### Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Invite Roommates" icon="user-plus" href="/guides/joining-apartment">
+    Learn how roommates can join using your apartment code
+  </Card>
+  <Card title="Start Managing Tasks" icon="list-check" href="/guides/task-management">
+    Create and assign household tasks to members
+  </Card>
+  <Card title="Track Expenses" icon="money-bill" href="/guides/managing-expenses">
+    Begin tracking shared expenses and debts
+  </Card>
+  <Card title="Understand Roles" icon="shield" href="/guides/member-roles">
+    Learn about coordinator vs regular member permissions
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="I can't find the create button">
+    If you already have apartments:
+    1. Go to `/pisua/erakutsi` (apartment list)
+    2. Look for a button to add a new apartment
+    
+    If you're having trouble, try navigating directly to `/pisua/sortu`.
+  </Accordion>
+  
+  <Accordion title="The form says 'Gordetzen...' and nothing happens">
+    This means "Saving..." in Basque. If it stays like this:
+    - Check your internet connection
+    - Wait a moment - backend synchronization may take a few seconds
+    - If it persists beyond 10 seconds, refresh the page and try again
+  </Accordion>
+  
+  <Accordion title="Can I create multiple apartments?">
+    Yes! You can create and be a member of multiple apartments. This is useful if you:
+    - Manage multiple properties
+    - Move to a new apartment but want to keep the old records
+    - Help friends set up their apartments
+    
+    Switch between apartments using the apartment selection screen.
+  </Accordion>
+  
+  <Accordion title="What if I make a mistake in the name?">
+    Don't worry! As the coordinator, you can edit the apartment name later:
+    1. Go to the members page (`/pisua/kideak`)
+    2. Click the menu icon (three dots) at the top right
+    3. Select "Editatu" (Edit)
+    4. Change the name and code if needed
+  </Accordion>
+</AccordionGroup>
+
+## Technical Details
+
+For developers or curious users:
+
+- **Route**: `POST /pisua` (defined in `routes/web.php:25`)
+- **Controller**: `PisoController@store` (`app/Http/Controllers/PisoController.php:82`)
+- **Code Generation**: Random 5-digit number, uniqueness checked against existing codes
+- **Default Role**: Creator automatically gets `mota: 'koordinatzailea'`
+- **Synchronization**: Apartment data is queued for sync with Odoo ERP system

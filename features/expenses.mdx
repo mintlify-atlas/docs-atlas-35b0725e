@@ -1,0 +1,381 @@
+---
+title: 'Expense Tracking'
+description: 'Track shared expenses, calculate debts automatically, and settle payments between roommates'
+icon: 'credit-card'
+---
+
+## Overview
+
+The Expense Tracking feature helps roommates manage shared costs fairly. It automatically calculates who owes money to whom and provides visual indicators for debt status.
+
+<CardGroup cols={2}>
+  <Card title="Add Expenses" icon="plus-circle">
+    Record expenses with amount, date, and who paid
+  </Card>
+  <Card title="Automatic Calculations" icon="calculator">
+    System calculates debt balances between all roommates
+  </Card>
+  <Card title="Settle Debts" icon="money-bill-transfer">
+    Record payments to clear debts and update balances
+  </Card>
+  <Card title="Color-Coded Status" icon="palette">
+    Red for debts owed, green for credits, instant visual feedback
+  </Card>
+</CardGroup>
+
+## User Workflows
+
+### Adding an Expense
+
+1. Navigate to **Gastuak** (Expenses) from the apartment dashboard
+2. Click "Add Expense" button
+3. Fill in the expense details:
+   - **Name**: What was purchased (e.g., "Groceries", "Internet Bill")
+   - **Amount**: Cost in euros
+   - **Date**: When the expense occurred
+   - **Paid by**: Select which roommate paid
+4. Submit - expense is saved and synced to Odoo
+
+<Note>
+Expenses are automatically associated with the currently selected apartment from your session.
+</Note>
+
+### Viewing Expense History
+
+The expense list shows:
+- Expense name and amount
+- Who paid for it
+- Date in YYYY/MM/DD format
+- Edit and delete buttons
+
+**Filter by Month**: Use the date filter to view expenses from specific months (format: YYYY-MM).
+
+### Settling Debts
+
+When you pay back a roommate:
+
+1. View the debt summary at the top of the Expenses page
+2. Click "Settle Debt" next to the person you owe
+3. Enter the payment amount
+4. System records the payment and updates debt balances
+
+<Info>
+Debt calculations consider all expenses and all previous payments. The system automatically computes net balances.
+</Info>
+
+### Color-Coded Debt Indicators
+
+- **Red**: You owe this person money
+- **Green**: This person owes you money
+- **Amount**: Shows the exact balance
+
+## Technical Implementation
+
+### The Gasto Model
+
+Expenses are represented by the `Gasto` model:
+
+```php ~/workspace/source/laravel/app/Models/Gasto.php
+class Gasto extends Model
+{
+    protected $table = 'gastos';
+    protected $primaryKey = 'IdGasto';
+
+    protected $fillable = [
+        'IdGasto',
+        'IdUsuario',    // Who paid
+        'IdPiso',       // Which apartment
+        'Cantidad',     // Amount in euros
+        'Nombre',       // Expense name/concept
+        'Fecha',        // Date of expense
+        'odoo_id',      // Odoo sync ID
+        'synced',       // Sync status
+        'sync_error'    // Error messages
+    ];
+
+    protected $casts = [
+        'IdGasto'   => 'integer',
+        'IdUsuario' => 'integer',
+        'IdPiso'    => 'integer',
+        'Cantidad'  => 'decimal:2',
+        'Fecha'     => 'date',
+    ];
+
+    public function usuario(){
+        return $this->belongsTo(User::class, 'IdUsuario');
+    }
+
+    public function piso(){
+        return $this->belongsTo(Piso::class, 'IdPiso');
+    }
+}
+```
+
+### The Ordainketa Model
+
+Payments (debt settlements) use the `Ordainketa` model:
+
+```php ~/workspace/source/laravel/app/Models/Ordainketa.php
+class Ordainketa extends Model
+{
+    protected $fillable = [
+        'piso_id',      // Which apartment
+        'deudor_id',    // Who paid (debtor)
+        'acreedor_id',  // Who received payment (creditor)
+        'cantidad'      // Payment amount
+    ];
+}
+```
+
+### Model Relationships
+
+- **Gasto belongs to Piso**: Each expense is tied to one apartment
+- **Gasto belongs to User**: Tracks who paid for the expense
+- **Ordainketa belongs to Piso**: Payments are apartment-specific
+- **Ordainketa references two Users**: Debtor and creditor
+
+## API Endpoints
+
+### View Expenses
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::get('/gastuak', [GastoController::class, 'index']);
+```
+
+**Implementation:**
+
+```php ~/workspace/source/laravel/app/Http/Controllers/GastoController.php
+public function index(Request $request) {
+    $pisuaId = session('pisua_id');
+    $fechaFiltro = $request->input('fecha'); // Format: YYYY-MM
+
+    $piso = Piso::with([
+        'inquilinos',
+        'gastos' => function ($query) use ($fechaFiltro) {
+            $query->orderBy('Fecha', 'desc');
+            
+            if ($fechaFiltro) {
+                $partes = explode('-', $fechaFiltro);
+                if (count($partes) === 2) {
+                    $query->whereYear('Fecha', $partes[0])
+                          ->whereMonth('Fecha', $partes[1]);
+                }
+            }
+        },
+        'gastos.usuario',
+        'ordainketak'
+    ])->find($pisuaId);
+
+    return Inertia::render('Gastuak/GastuakPage', [
+        'piso' => $piso,
+        'filters' => ['fecha' => $fechaFiltro]
+    ]);
+}
+```
+
+### Add Expense
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::post('/gastuak/addGastua', [GastoController::class, 'addGasto'])
+    ->name('gastuak.gehitu');
+```
+
+**Implementation (see GastoController.php:59):**
+
+```php
+public function addGasto(Request $request){
+    $datosProcesados = $request->validate([
+        'Nombre' => 'required|string|max:255',
+        'Cantidad' => 'required|numeric|min:0',
+        'Fecha'  => 'required|date',
+        'IdUsuario' => 'required|numeric',
+    ]);
+
+    $pisuaId = session('pisua_id');
+    $datosProcesados['IdPiso'] = $pisuaId;
+
+    $gasto = Gasto::create($datosProcesados);
+    
+    // Sync to Odoo
+    SyncGastoToOdoo::dispatch($gasto);
+
+    return redirect('/gastuak');
+}
+```
+
+### Edit Expense
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::put('/gastuak/editar/{id}', [GastoController::class, 'editGasto'])
+    ->name('gastuak.editar');
+```
+
+**Implementation (see GastoController.php:79):**
+
+```php
+public function editGasto(Request $request, $id) {
+    $gasto = Gasto::where('IdGasto', $id)->firstOrFail();
+
+    $datosProcesados = $request->validate([
+        'Nombre' => 'required|string|max:255',
+        'Cantidad' => 'required|numeric|min:0',
+        'Fecha'  => 'required|date',
+        'IdUsuario' => 'required|exists:users,id',
+    ]);
+
+    $gasto->update($datosProcesados);
+    
+    // Re-sync to Odoo
+    SyncGastoToOdoo::dispatch($gasto);
+
+    return redirect("/gastuak");
+}
+```
+
+### Delete Expense
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::delete('/gastos/deleteGasto/{id}', [GastoController::class, 'eliminarGasto'])
+    ->name('gastuak.kendu');
+```
+
+**Implementation (see GastoController.php:101):**
+
+```php
+public function eliminarGasto($id) {
+    $gasto = Gasto::where('IdGasto', $id)->firstOrFail();
+    $odooId = $gasto->odoo_id;
+    
+    $gasto->delete();
+    
+    // Delete from Odoo if synced
+    if($odooId){
+        SyncDeleteGastoFromOdoo::dispatch((int) $odooId);
+    }
+    
+    return redirect("/gastuak");
+}
+```
+
+### Settle Debt
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::post('/pagos/saldar', [GastoController::class, 'saldarDeuda'])
+    ->name('pagos.saldar');
+```
+
+**Implementation (see GastoController.php:156):**
+
+```php
+public function saldarDeuda(Request $request) {
+    $validated = $request->validate([
+        'deudor_id' => 'required|exists:users,id',
+        'acreedor_id' => 'required|exists:users,id',
+        'cantidad' => 'required|numeric|min:0.01',
+    ]);
+
+    Ordainketa::create([
+        'piso_id' => session('pisua_id'),
+        'deudor_id' => $validated['deudor_id'],
+        'acreedor_id' => $validated['acreedor_id'],
+        'cantidad' => $validated['cantidad'],
+    ]);
+
+    return redirect()->back();
+}
+```
+
+## Odoo Integration
+
+### Expense Sync Jobs
+
+All expense operations trigger background sync jobs:
+
+- **SyncGastoToOdoo**: Creates or updates expense in Odoo
+- **SyncDeleteGastoFromOdoo**: Removes expense from Odoo
+
+### How Odoo Manages Financial Data
+
+Odoo ERP maintains:
+1. **Expense Records**: Full audit trail of all expenses
+2. **Payment Records**: All debt settlements
+3. **Balance Calculations**: Centralized debt tracking across all apartments
+4. **Reporting**: Financial summaries and analytics
+
+<Info>
+Every expense and payment has an `odoo_id` that links the local database to Odoo's records.
+</Info>
+
+## Frontend Components
+
+### Expense List Component
+
+The expense UI is built with React:
+
+```tsx ~/workspace/source/laravel/resources/js/pages/Gastuak/Gastos.tsx
+export interface Gasto {
+    IdGasto: number,
+    Nombre: string,
+    IdUsuario: number,
+    IdPiso: number,
+    Cantidad: number,
+    Fecha: string,
+    created_at: string,
+    updated_at: string
+}
+
+function Gastos({ gastos, onDelete, usuariosMap }: GastosProps) {
+    const formatearFecha = (fechaString: string) => {
+        const date = new Date(fechaString);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    };
+
+    // Renders scrollable list of expenses
+    // Each card shows name, amount, payer, date
+    // Edit and delete buttons for each expense
+}
+```
+
+### Key UI Features
+
+- **Scrollable List**: Max height 70vh with custom scrollbar styling
+- **Hover Effects**: Cards lift and show shadow on hover
+- **Truncation**: Long expense names truncate with ellipsis
+- **Icons**: Calendar icons for dates, semantic visual design
+- **Responsive**: Adapts layout for mobile and desktop
+
+### Debt Balance Calculation
+
+The frontend calculates net balances by:
+1. Summing all expenses per user
+2. Calculating each person's fair share (total / number of members)
+3. Subtracting fair share from amount paid
+4. Adjusting for recorded payments (ordainketak)
+5. Displaying net balance with color coding
+
+## Best Practices
+
+<Tip>
+**Date Filtering**: The month filter uses `whereYear()` and `whereMonth()` for efficient database queries without loading all expenses.
+</Tip>
+
+<Tip>
+**Decimal Precision**: The `Cantidad` field uses `decimal:2` casting to ensure accurate currency calculations without floating point errors.
+</Tip>
+
+<Tip>
+**Eager Loading**: Always eager load relationships (`with(['gastos.usuario'])`) to avoid N+1 query problems when displaying expense lists.
+</Tip>
+
+<Warning>
+Debt calculations happen on the frontend. For production systems with many transactions, consider moving this logic to the backend for better performance and accuracy.
+</Warning>
+
+## Related Features
+
+- [Apartments](/features/apartments) - Expenses belong to apartments
+- [Members](/features/members) - Users pay expenses and settle debts
+- [Odoo Integration](/architecture/odoo-integration) - Financial data syncs to ERP

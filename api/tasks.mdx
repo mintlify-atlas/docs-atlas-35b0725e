@@ -1,0 +1,464 @@
+---
+title: 'Tasks'
+description: 'Manage household tasks (zereginak) in apartments'
+icon: 'list-check'
+---
+
+## Overview
+
+The Tasks API allows apartment members to create, assign, and track household tasks.
+
+<Note>
+All task endpoints require authentication and an active apartment selected in session.
+</Note>
+
+## List Tasks
+
+Get all tasks for the current apartment.
+
+```
+GET /zereginak
+```
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/zereginak \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response Example
+
+```json
+{
+  "zereginak": [
+    {
+      "id": 1,
+      "izena": "Clean kitchen",
+      "deskripzioa": "Deep clean the kitchen including appliances",
+      "pisua_id": 1,
+      "egoera": "egiteko",
+      "odoo_id": 456,
+      "synced": true,
+      "created_at": "2026-03-01T10:00:00.000000Z",
+      "updated_at": "2026-03-01T10:00:00.000000Z",
+      "erabiltzaileak": [
+        {
+          "id": 5,
+          "name": "John Doe",
+          "email": "john@example.com",
+          "pivot": {
+            "zereginak_id": 1,
+            "erabiltzailea_id": 5,
+            "hasiera_data": "2026-03-01",
+            "amaiera_data": null
+          }
+        }
+      ]
+    }
+  ],
+  "pisuaIzena": "Downtown Apartment"
+}
+```
+
+<ResponseField name="zereginak" type="array">
+  Array of task objects for the current apartment
+</ResponseField>
+
+<ResponseField name="zereginak[].id" type="integer">
+  Task ID
+</ResponseField>
+
+<ResponseField name="zereginak[].izena" type="string">
+  Task name
+</ResponseField>
+
+<ResponseField name="zereginak[].deskripzioa" type="string" nullable>
+  Task description
+</ResponseField>
+
+<ResponseField name="zereginak[].egoera" type="string">
+  Task status: `egiteko` (to do), `egiten` (in progress), `eginda` (done)
+</ResponseField>
+
+<ResponseField name="zereginak[].erabiltzaileak" type="array">
+  Array of assigned users
+</ResponseField>
+
+<ResponseField name="pisuaIzena" type="string">
+  Current apartment name
+</ResponseField>
+
+---
+
+## Create Task Form
+
+Get data needed for creating a new task.
+
+```
+GET /zereginak/sortu
+```
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/zereginak/sortu \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response Example
+
+```json
+{
+  "kideak": [
+    {
+      "id": 5,
+      "name": "John Doe",
+      "email": "john@example.com"
+    },
+    {
+      "id": 7,
+      "name": "Jane Smith",
+      "email": "jane@example.com"
+    }
+  ]
+}
+```
+
+<ResponseField name="kideak" type="array">
+  Array of apartment members (for assignment)
+</ResponseField>
+
+---
+
+## Create Task
+
+Create a new task in the current apartment.
+
+```
+POST /zereginak
+```
+
+### Request Parameters
+
+<ParamField path="izena" type="string" required>
+  Task name (max 255 characters)
+</ParamField>
+
+<ParamField path="deskripzioa" type="string">
+  Task description (optional)
+</ParamField>
+
+<ParamField path="erabiltzailea_id" type="integer" required>
+  ID of user to assign task to (must exist in users table)
+</ParamField>
+
+<ParamField path="hasiera_data" type="date" required>
+  Task start date (format: YYYY-MM-DD)
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X POST https://your-domain.com/zereginak \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  -d '{
+    "izena": "Clean bathroom",
+    "deskripzioa": "Scrub tiles and clean mirror",
+    "erabiltzailea_id": 5,
+    "hasiera_data": "2026-03-06"
+  }'
+```
+
+### Response
+
+Redirects to `/zereginak` (task list).
+
+<ResponseField name="id" type="integer">
+  Auto-generated task ID
+</ResponseField>
+
+<ResponseField name="pisua_id" type="integer">
+  Automatically set from session
+</ResponseField>
+
+<ResponseField name="egoera" type="string">
+  Default status: `egiteko`
+</ResponseField>
+
+<ResponseField name="odoo_id" type="integer" nullable>
+  Odoo ERP integration ID (synced asynchronously)
+</ResponseField>
+
+---
+
+## Edit Task Form
+
+Get task details for editing.
+
+```
+GET /zereginak/{zeregina}/editatu
+```
+
+### Path Parameters
+
+<ParamField path="zeregina" type="integer" required>
+  Task ID
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/zereginak/1/editatu \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response Example
+
+```json
+{
+  "zereginak": {
+    "id": 1,
+    "izena": "Clean kitchen",
+    "deskripzioa": "Deep clean the kitchen",
+    "pisua_id": 1,
+    "egoera": "egiteko",
+    "erabiltzaileak": [
+      {
+        "id": 5,
+        "name": "John Doe",
+        "pivot": {
+          "hasiera_data": "2026-03-01",
+          "amaiera_data": null
+        }
+      }
+    ]
+  },
+  "kideak": [
+    {
+      "id": 5,
+      "name": "John Doe",
+      "email": "john@example.com"
+    },
+    {
+      "id": 7,
+      "name": "Jane Smith",
+      "email": "jane@example.com"
+    }
+  ]
+}
+```
+
+<ResponseField name="zereginak" type="object">
+  Task object with assigned users
+</ResponseField>
+
+<ResponseField name="kideak" type="array">
+  List of apartment members (for reassignment)
+</ResponseField>
+
+### Error Response
+
+**403 Forbidden** (if task belongs to different apartment):
+```json
+{
+  "message": "Ez duzu baimenik zeregin hau editatzeko."
+}
+```
+
+---
+
+## Update Task
+
+Update an existing task.
+
+```
+PUT /zereginak/{zeregina}
+```
+
+### Path Parameters
+
+<ParamField path="zeregina" type="integer" required>
+  Task ID
+</ParamField>
+
+### Request Parameters
+
+<ParamField path="izena" type="string" required>
+  Updated task name (max 255 characters)
+</ParamField>
+
+<ParamField path="deskripzioa" type="string">
+  Updated task description (optional)
+</ParamField>
+
+<ParamField path="egoera" type="string" required>
+  Task status: `egiteko`, `egiten`, or `eginda`
+</ParamField>
+
+<ParamField path="hasiera_data" type="date" required>
+  Updated start date (format: YYYY-MM-DD)
+</ParamField>
+
+<ParamField path="erabiltzailea_id" type="integer" required>
+  Updated assigned user ID (must exist in users table)
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X PUT https://your-domain.com/zereginak/1 \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  -d '{
+    "izena": "Clean kitchen thoroughly",
+    "deskripzioa": "Deep clean including appliances and floors",
+    "egoera": "egiten",
+    "hasiera_data": "2026-03-01",
+    "erabiltzailea_id": 7
+  }'
+```
+
+### Response
+
+Redirects to `/zereginak` (task list).
+
+---
+
+## Delete Task
+
+Delete a task permanently.
+
+```
+DELETE /zereginak/{zeregina}
+```
+
+### Path Parameters
+
+<ParamField path="zeregina" type="integer" required>
+  Task ID to delete
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X DELETE https://your-domain.com/zereginak/1 \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Redirects to `/zereginak` (task list).
+
+### Error Response
+
+**403 Forbidden** (if task belongs to different apartment):
+```json
+{
+  "message": "Forbidden"
+}
+```
+
+<Info>
+If the task was synced to Odoo, deletion will be propagated asynchronously.
+</Info>
+
+---
+
+## Data Models
+
+### Zereginak (Task)
+
+```json
+{
+  "id": 1,
+  "izena": "Task name",
+  "deskripzioa": "Task description",
+  "pisua_id": 1,
+  "egoera": "egiteko",
+  "odoo_id": 456,
+  "synced": true,
+  "sync_error": null,
+  "created_at": "2026-03-01T10:00:00.000000Z",
+  "updated_at": "2026-03-01T10:00:00.000000Z"
+}
+```
+
+### Task Status Values
+
+| Status | Basque | English | Description |
+|--------|--------|---------|-------------|
+| `egiteko` | Egiteko | To Do | Task not started |
+| `egiten` | Egiten | In Progress | Task in progress |
+| `eginda` | Eginda | Done | Task completed |
+
+### Egin Pivot Table (Task Assignment)
+
+```json
+{
+  "zereginak_id": 1,
+  "erabiltzailea_id": 5,
+  "hasiera_data": "2026-03-01",
+  "amaiera_data": null,
+  "created_at": "2026-03-01T10:00:00.000000Z",
+  "updated_at": "2026-03-01T10:00:00.000000Z"
+}
+```
+
+<ResponseField name="hasiera_data" type="date">
+  Task start date
+</ResponseField>
+
+<ResponseField name="amaiera_data" type="date" nullable>
+  Task completion date (null if not completed)
+</ResponseField>
+
+---
+
+## Task Workflow
+
+1. **Create**: Task starts with status `egiteko` (to do)
+2. **In Progress**: Member updates status to `egiten` (in progress)
+3. **Complete**: Member updates status to `eginda` (done)
+
+## Validation Rules
+
+- Task name is required and cannot exceed 255 characters
+- Description is optional
+- Status must be one of: `egiteko`, `egiten`, `eginda`
+- Start date is required and must be a valid date
+- Assigned user must exist in the users table
+- Tasks can only be accessed/modified within the context of the current apartment
+
+## Error Responses
+
+**422 Validation Error:**
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "egoera": ["The selected egoera is invalid."]
+  }
+}
+```
+
+**403 Forbidden:**
+```json
+{
+  "message": "Ez duzu baimenik zeregin hau editatzeko."
+}
+```
+
+**404 Not Found:**
+```json
+{
+  "message": "No query results for model [App\\Models\\Zereginak] 999"
+}
+```

@@ -1,0 +1,501 @@
+---
+title: 'Database Setup'
+description: 'Configure and manage PostgreSQL database for 7POINTS.NET'
+---
+
+## Overview
+
+7POINTS.NET uses PostgreSQL 15 as its primary database, shared between Laravel and Odoo services. This guide covers database setup, management, and maintenance.
+
+## PostgreSQL Configuration
+
+### Docker Compose Configuration
+
+The PostgreSQL service is defined in `docker-compose.yaml`:
+
+```yaml docker-compose.yaml
+postgres:
+  image: postgres:15
+  ports:
+    - "5432:5432"
+  volumes:
+    - postgres_data:/var/lib/postgresql/data
+  environment:
+    - POSTGRES_DB=postgres
+    - POSTGRES_USER=odoo
+    - POSTGRES_PASSWORD=myodoo
+  networks:
+    - app-network
+
+volumes:
+  postgres_data:
+```
+
+### Database Credentials
+
+Default credentials (change these in production):
+
+- **Database Name**: `postgres`
+- **Username**: `odoo`
+- **Password**: `myodoo`
+- **Port**: `5432`
+- **Host**: `postgres` (within Docker), `localhost` (from host machine)
+
+<Warning>
+  The default password `myodoo` is insecure. Always use strong passwords in production environments.
+</Warning>
+
+## Connecting to the Database
+
+### From Laravel (Docker)
+
+Configure Laravel's `.env` file:
+
+```env laravel/.env
+DB_CONNECTION=pgsql
+DB_HOST=postgres
+DB_PORT=5432
+DB_DATABASE=postgres
+DB_USERNAME=odoo
+DB_PASSWORD=myodoo
+```
+
+### From Odoo (Docker)
+
+Odoo automatically connects using environment variables:
+
+```yaml docker-compose.yaml
+odoo:
+  environment:
+    - HOST=postgres
+    - USER=odoo
+    - PASSWORD=myodoo
+```
+
+### From Host Machine
+
+Connect using any PostgreSQL client:
+
+```bash
+# Using psql
+psql -h localhost -p 5432 -U odoo -d postgres
+
+# Using Docker exec
+docker-compose exec postgres psql -U odoo -d postgres
+```
+
+## Running Laravel Migrations
+
+### Initial Migration
+
+After setting up the environment, run migrations to create database schema:
+
+<Steps>
+  <Step title="Ensure database is running">
+    ```bash
+    docker-compose up -d postgres
+    ```
+  </Step>
+
+  <Step title="Run migrations">
+    ```bash
+    # From host (if Laravel installed locally)
+    cd laravel
+    php artisan migrate
+    
+    # From Docker
+    docker-compose exec laravel_app php artisan migrate
+    ```
+  </Step>
+
+  <Step title="Verify tables created">
+    ```bash
+    docker-compose exec postgres psql -U odoo -d postgres -c "\dt"
+    ```
+  </Step>
+</Steps>
+
+### Migration Commands
+
+```bash
+# Run migrations
+php artisan migrate
+
+# Run migrations with seed data
+php artisan migrate --seed
+
+# Rollback last migration
+php artisan migrate:rollback
+
+# Rollback all migrations
+php artisan migrate:reset
+
+# Drop all tables and re-run migrations
+php artisan migrate:fresh
+
+# Fresh migration with seeding
+php artisan migrate:fresh --seed
+
+# Check migration status
+php artisan migrate:status
+```
+
+<Warning>
+  `migrate:fresh` will drop all tables and data. Only use in development.
+</Warning>
+
+## Seeding Data
+
+### Running Seeders
+
+Populate the database with test or initial data:
+
+```bash
+# Run all seeders
+php artisan db:seed
+
+# Run specific seeder
+php artisan db:seed --class=UserSeeder
+
+# In Docker
+docker-compose exec laravel_app php artisan db:seed
+```
+
+### Creating a Seeder
+
+```bash
+php artisan make:seeder FlatSeeder
+```
+
+Example seeder:
+
+```php database/seeders/FlatSeeder.php
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+
+class FlatSeeder extends Seeder
+{
+    public function run()
+    {
+        DB::table('flats')->insert([
+            'name' => 'Student Flat 1',
+            'address' => 'Calle Principal 123',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+}
+```
+
+## Odoo Database Management
+
+### Initial Odoo Database Setup
+
+<Steps>
+  <Step title="Access Odoo">
+    Navigate to http://localhost:8069
+  </Step>
+
+  <Step title="Create database">
+    On first access, Odoo will prompt you to create a database:
+    - Master Password: Set a strong master password
+    - Database Name: `odoo_production`
+    - Email: Admin email address
+    - Password: Admin password
+    - Language: Select your language
+    - Country: Select your country
+  </Step>
+
+  <Step title="Install modules">
+    Install the expenses module for flatmate expense tracking:
+    - Go to Apps
+    - Search for "Expenses"
+    - Click Install
+  </Step>
+</Steps>
+
+### Odoo Database Operations
+
+```bash
+# List Odoo databases
+docker-compose exec postgres psql -U odoo -l
+
+# Backup Odoo database
+docker-compose exec postgres pg_dump -U odoo odoo_production > backup.sql
+
+# Restore Odoo database
+cat backup.sql | docker-compose exec -T postgres psql -U odoo odoo_production
+```
+
+## Database Backup Strategies
+
+### Manual Backup
+
+#### Complete Database Backup
+
+```bash
+# Backup all databases
+docker-compose exec postgres pg_dumpall -U odoo > full_backup_$(date +%Y%m%d).sql
+
+# Backup specific database
+docker-compose exec postgres pg_dump -U odoo -d postgres > laravel_backup_$(date +%Y%m%d).sql
+```
+
+#### Compressed Backup
+
+```bash
+# Create compressed backup
+docker-compose exec postgres pg_dump -U odoo -d postgres | gzip > backup_$(date +%Y%m%d).sql.gz
+
+# Restore from compressed backup
+gunzip < backup_20260305.sql.gz | docker-compose exec -T postgres psql -U odoo -d postgres
+```
+
+### Automated Backup Script
+
+Create `scripts/backup_db.sh`:
+
+```bash backup_db.sh
+#!/bin/bash
+
+# Configuration
+BACKUP_DIR="./backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+RETENTION_DAYS=7
+
+# Create backup directory
+mkdir -p $BACKUP_DIR
+
+# Backup PostgreSQL
+echo "Starting backup..."
+docker-compose exec -T postgres pg_dumpall -U odoo | gzip > "$BACKUP_DIR/backup_$DATE.sql.gz"
+
+if [ $? -eq 0 ]; then
+    echo "Backup completed: backup_$DATE.sql.gz"
+else
+    echo "Backup failed!"
+    exit 1
+fi
+
+# Remove old backups
+find $BACKUP_DIR -name "backup_*.sql.gz" -mtime +$RETENTION_DAYS -delete
+echo "Old backups removed (older than $RETENTION_DAYS days)"
+```
+
+Make it executable and schedule:
+
+```bash
+chmod +x scripts/backup_db.sh
+
+# Add to crontab for daily backups at 2 AM
+crontab -e
+0 2 * * * /path/to/scripts/backup_db.sh
+```
+
+### Cloud Backup
+
+#### AWS S3 Backup
+
+```bash
+#!/bin/bash
+# Backup to AWS S3
+
+BUCKET_NAME="7points-backups"
+BACKUP_FILE="backup_$(date +%Y%m%d_%H%M%S).sql.gz"
+
+# Create backup
+docker-compose exec -T postgres pg_dumpall -U odoo | gzip > "/tmp/$BACKUP_FILE"
+
+# Upload to S3
+aws s3 cp "/tmp/$BACKUP_FILE" "s3://$BUCKET_NAME/database/"
+
+# Clean up local file
+rm "/tmp/$BACKUP_FILE"
+```
+
+## Database Restoration
+
+### Restore from Backup
+
+<Steps>
+  <Step title="Stop application services">
+    ```bash
+    docker-compose stop laravel_app odoo
+    ```
+  </Step>
+
+  <Step title="Restore database">
+    ```bash
+    # Restore from SQL file
+    cat backup.sql | docker-compose exec -T postgres psql -U odoo
+    
+    # Restore from compressed file
+    gunzip < backup.sql.gz | docker-compose exec -T postgres psql -U odoo
+    ```
+  </Step>
+
+  <Step title="Restart services">
+    ```bash
+    docker-compose start laravel_app odoo
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Restoring a backup will overwrite all existing data. Always test restorations in a non-production environment first.
+</Warning>
+
+## Database Volume Persistence
+
+### Volume Management
+
+The PostgreSQL data is stored in a Docker volume named `postgres_data`:
+
+```bash
+# List volumes
+docker volume ls
+
+# Inspect volume
+docker volume inspect <project>_postgres_data
+
+# Backup volume
+docker run --rm -v <project>_postgres_data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/postgres_volume_backup.tar.gz /data
+
+# Restore volume
+docker run --rm -v <project>_postgres_data:/data -v $(pwd):/backup \
+  alpine tar xzf /backup/postgres_volume_backup.tar.gz -C /
+```
+
+<Warning>
+  Running `docker-compose down -v` will delete all volumes, including database data. Always backup before removing volumes.
+</Warning>
+
+## Database Monitoring
+
+### Connection Monitoring
+
+```sql
+-- View active connections
+SELECT datname, usename, application_name, client_addr, state 
+FROM pg_stat_activity;
+
+-- Count connections per database
+SELECT datname, count(*) 
+FROM pg_stat_activity 
+GROUP BY datname;
+```
+
+### Database Size
+
+```sql
+-- Check database sizes
+SELECT datname, pg_size_pretty(pg_database_size(datname)) 
+FROM pg_database;
+
+-- Check table sizes
+SELECT schemaname, tablename, 
+       pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) 
+FROM pg_tables 
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+```
+
+### Performance Queries
+
+```sql
+-- Slow queries
+SELECT query, calls, total_time, mean_time 
+FROM pg_stat_statements 
+ORDER BY mean_time DESC 
+LIMIT 10;
+
+-- Cache hit ratio
+SELECT sum(heap_blks_read) as heap_read, 
+       sum(heap_blks_hit) as heap_hit, 
+       sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read)) as ratio
+FROM pg_statio_user_tables;
+```
+
+## Troubleshooting
+
+### Connection Issues
+
+<AccordionGroup>
+  <Accordion title="Connection refused">
+    **Problem**: Cannot connect to PostgreSQL
+    
+    **Solutions**:
+    ```bash
+    # Check if container is running
+    docker-compose ps postgres
+    
+    # Check container logs
+    docker-compose logs postgres
+    
+    # Verify port is exposed
+    docker-compose port postgres 5432
+    
+    # Test connection
+    docker-compose exec postgres pg_isready -U odoo
+    ```
+  </Accordion>
+
+  <Accordion title="Authentication failed">
+    **Problem**: `FATAL: password authentication failed`
+    
+    **Solutions**:
+    - Verify credentials in `.env` match docker-compose.yaml
+    - Reset PostgreSQL password:
+    ```bash
+    docker-compose exec postgres psql -U odoo -c "ALTER USER odoo WITH PASSWORD 'newpassword';"
+    ```
+  </Accordion>
+
+  <Accordion title="Database does not exist">
+    **Problem**: `FATAL: database "postgres" does not exist`
+    
+    **Solutions**:
+    ```bash
+    # Create database
+    docker-compose exec postgres createdb -U odoo postgres
+    
+    # Or using SQL
+    docker-compose exec postgres psql -U odoo -c "CREATE DATABASE postgres;"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Migration Errors
+
+<AccordionGroup>
+  <Accordion title="Migration failed">
+    **Problem**: Migration fails with SQL error
+    
+    **Solutions**:
+    ```bash
+    # Rollback last migration
+    php artisan migrate:rollback --step=1
+    
+    # Check migration status
+    php artisan migrate:status
+    
+    # Fix the migration file and re-run
+    php artisan migrate
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Monitoring" icon="chart-line" href="/deployment/monitoring">
+    Set up monitoring and logging
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/deployment/troubleshooting">
+    Common issues and solutions
+  </Card>
+</CardGroup>

@@ -1,0 +1,364 @@
+---
+title: 'Members'
+description: 'Manage apartment members and roles'
+icon: 'users'
+---
+
+## Overview
+
+The Members API provides endpoints for managing apartment members, roles, and permissions.
+
+<Note>
+All member endpoints require authentication with `auth` and `verified` middleware.
+</Note>
+
+## Member Roles
+
+7POINTS.NET has two member roles:
+
+<Card title="Koordinatzailea" icon="crown">
+  **Coordinator** - Full permissions including:
+  - Edit apartment details
+  - Delete apartment
+  - Promote/remove members
+  - All regular member permissions
+</Card>
+
+<Card title="Normala" icon="user">
+  **Regular Member** - Standard permissions:
+  - View apartment details
+  - Create/edit/delete own expenses
+  - Create/edit/delete tasks
+  - Leave apartment
+</Card>
+
+---
+
+## Get Members
+
+Retrieve all members of the current apartment.
+
+```
+GET /pisua/kideak
+```
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/pisua/kideak \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response Example
+
+```json
+{
+  "pisua": {
+    "id": 1,
+    "izena": "Downtown Apartment",
+    "kodigoa": "04823",
+    "user_id": 5,
+    "odoo_id": 123,
+    "created_at": "2026-01-15T10:30:00.000000Z",
+    "updated_at": "2026-01-15T10:30:00.000000Z"
+  },
+  "kideak": [
+    {
+      "id": 5,
+      "name": "John Doe",
+      "email": "john@example.com",
+      "email_verified_at": "2026-01-10T08:00:00.000000Z",
+      "created_at": "2026-01-10T08:00:00.000000Z",
+      "updated_at": "2026-01-10T08:00:00.000000Z",
+      "pivot": {
+        "piso_id": 1,
+        "user_id": 5,
+        "mota": "koordinatzailea",
+        "created_at": "2026-01-15T10:30:00.000000Z",
+        "updated_at": "2026-01-15T10:30:00.000000Z"
+      }
+    },
+    {
+      "id": 7,
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "email_verified_at": "2026-01-12T09:15:00.000000Z",
+      "created_at": "2026-01-12T09:15:00.000000Z",
+      "updated_at": "2026-01-12T09:15:00.000000Z",
+      "pivot": {
+        "piso_id": 1,
+        "user_id": 7,
+        "mota": "normala",
+        "created_at": "2026-01-16T11:00:00.000000Z",
+        "updated_at": "2026-01-16T11:00:00.000000Z"
+      }
+    }
+  ],
+  "isCurrentUserAdmin": true
+}
+```
+
+<ResponseField name="pisua" type="object">
+  Current apartment object
+</ResponseField>
+
+<ResponseField name="pisua.id" type="integer">
+  Apartment ID
+</ResponseField>
+
+<ResponseField name="pisua.izena" type="string">
+  Apartment name
+</ResponseField>
+
+<ResponseField name="pisua.kodigoa" type="string">
+  5-digit join code
+</ResponseField>
+
+<ResponseField name="kideak" type="array">
+  Array of member user objects
+</ResponseField>
+
+<ResponseField name="kideak[].id" type="integer">
+  User ID
+</ResponseField>
+
+<ResponseField name="kideak[].name" type="string">
+  User's full name
+</ResponseField>
+
+<ResponseField name="kideak[].email" type="string">
+  User's email address
+</ResponseField>
+
+<ResponseField name="kideak[].pivot.mota" type="string">
+  Member role: `koordinatzailea` or `normala`
+</ResponseField>
+
+<ResponseField name="kideak[].pivot.created_at" type="datetime">
+  When user joined the apartment
+</ResponseField>
+
+<ResponseField name="isCurrentUserAdmin" type="boolean">
+  Whether the authenticated user is the coordinator
+</ResponseField>
+
+---
+
+## Promote Member to Coordinator
+
+Transfer the coordinator role to another member. The current coordinator becomes a regular member.
+
+```
+PUT /pisua/{pisuaId}/kidea/{memberId}/promote
+```
+
+<Warning>
+Only the current coordinator can promote members. This action transfers the coordinator role.
+</Warning>
+
+### Path Parameters
+
+<ParamField path="pisuaId" type="integer" required>
+  Apartment ID
+</ParamField>
+
+<ParamField path="memberId" type="integer" required>
+  User ID to promote to coordinator
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X PUT https://your-domain.com/pisua/1/kidea/7/promote \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Returns back to previous page.
+
+### Process
+
+1. Current coordinator's role is changed to `normala`
+2. Target member's role is changed to `koordinatzailea`
+3. Changes are made within a database transaction (atomic operation)
+
+### Authorization
+
+Requires the `update` policy check, which verifies:
+- User is authenticated
+- User's role is `koordinatzailea` for the apartment
+
+---
+
+## Remove Member
+
+Remove a member from the apartment.
+
+```
+DELETE /pisua/{pisuaId}/kidea/{memberId}/remove
+```
+
+### Path Parameters
+
+<ParamField path="pisuaId" type="integer" required>
+  Apartment ID
+</ParamField>
+
+<ParamField path="memberId" type="integer" required>
+  User ID to remove
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X DELETE https://your-domain.com/pisua/1/kidea/7/remove \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+- **If removing another member**: Returns back to previous page
+- **If removing yourself**: Redirects to dashboard
+
+### Authorization Rules
+
+- Coordinator can remove any member
+- Any member can remove themselves
+
+### Behavior When Removing Yourself
+
+1. Member is detached from the apartment
+2. Session variables are cleared (`pisua_id`, `pisua_izena`)
+3. User is redirected to dashboard
+
+### Request Example (Remove Yourself)
+
+```bash
+curl -X DELETE https://your-domain.com/pisua/1/kidea/5/remove \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+---
+
+## Member Management Scenarios
+
+### Adding New Members
+
+Members join apartments using the Join Apartment endpoint (see [Apartments API](/api/apartments)) with the apartment's join code.
+
+### Coordinator Succession
+
+When the coordinator leaves the apartment voluntarily using the Leave Apartment endpoint (see [Apartments API](/api/apartments)):
+
+1. The coordinator is removed from the apartment
+2. The oldest remaining member (by join date) automatically becomes the new coordinator
+3. If no members remain, the apartment has no coordinator
+
+### Removing the Last Member
+
+If all members leave or are removed:
+- The apartment remains in the system
+- No coordinator exists
+- New members cannot join (requires at least one coordinator)
+- Consider deleting the apartment instead
+
+---
+
+## Data Structures
+
+### User Object
+
+```json
+{
+  "id": 5,
+  "name": "John Doe",
+  "email": "john@example.com",
+  "email_verified_at": "2026-01-10T08:00:00.000000Z",
+  "odoo_id": 234,
+  "synced": true,
+  "created_at": "2026-01-10T08:00:00.000000Z",
+  "updated_at": "2026-01-10T08:00:00.000000Z"
+}
+```
+
+### Piso-User Pivot (Membership)
+
+```json
+{
+  "piso_id": 1,
+  "user_id": 5,
+  "mota": "koordinatzailea",
+  "created_at": "2026-01-15T10:30:00.000000Z",
+  "updated_at": "2026-01-15T10:30:00.000000Z"
+}
+```
+
+<ResponseField name="mota" type="string">
+  Member role type: `koordinatzailea` (coordinator) or `normala` (regular)
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  When the user joined the apartment (used for succession)
+</ResponseField>
+
+---
+
+## Permissions Matrix
+
+| Action | Koordinatzailea | Normala |
+|--------|----------------|----------|
+| View members | ✓ | ✓ |
+| Edit apartment | ✓ | ✗ |
+| Delete apartment | ✓ | ✗ |
+| Promote member | ✓ | ✗ |
+| Remove other members | ✓ | ✗ |
+| Remove self | ✓ | ✓ |
+| Manage expenses | ✓ | ✓ |
+| Manage tasks | ✓ | ✓ |
+
+---
+
+## Error Responses
+
+**403 Forbidden** (unauthorized action):
+```json
+{
+  "message": "This action is unauthorized."
+}
+```
+
+**404 Not Found** (apartment or user doesn't exist):
+```json
+{
+  "message": "No query results for model [App\\Models\\Piso] 999"
+}
+```
+
+**422 Validation Error**:
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "memberId": ["The selected member is invalid."]
+  }
+}
+```
+
+---
+
+## Best Practices
+
+1. **Always verify coordinator status** before displaying admin UI elements
+2. **Handle succession gracefully** when coordinator leaves
+3. **Confirm destructive actions** like removing members
+4. **Clear session data** when removing yourself
+5. **Check `isCurrentUserAdmin`** to show/hide admin features in the UI
+
+## Related Endpoints
+
+- [Apartments API](/api/apartments) - Join apartment, leave apartment, and list apartments endpoints

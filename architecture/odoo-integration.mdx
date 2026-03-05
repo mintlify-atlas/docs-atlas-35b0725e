@@ -1,0 +1,701 @@
+---
+title: Odoo ERP Integration
+description: Integration strategy between Laravel and Odoo for financial management
+---
+
+Odoo 17.0 is integrated as the financial backend, providing expense tracking, accounting, and reporting capabilities through custom modules and XML-RPC API communication.
+
+## Why Odoo?
+
+From the project README, Odoo was chosen for several strategic reasons:
+
+### Business Rationale
+- **Open Source ERP** - No licensing costs, full customization
+- **Financial Module** - Built-in expense tracking (`hr.expense`)
+- **Accounting Features** - Invoices, payments, financial reports
+- **Modular Architecture** - Only install needed modules
+- **Scalability** - Handles growth from small apartments to large deployments
+- **Active Community** - Extensive documentation and support
+
+### Technical Rationale
+- **Python-based** - Easy to extend and customize
+- **PostgreSQL Native** - Same database as Laravel
+- **XML-RPC API** - Standard protocol for external integration
+- **Model-View Architecture** - Clean separation of data and presentation
+- **Built-in ORM** - Powerful database abstraction
+
+## Architecture Overview
+
+```
+┌────────────────────────────────────────┐
+│          Laravel Application              │
+│  (Primary business logic & UI)           │
+└───────────────┬─────────────────────────┘
+               │
+               │ OdooService (XML-RPC)
+               │
+┌──────────────┴─────────────────────────┐
+│            Odoo ERP 17.0                  │
+├────────────────────────────────────────┤
+│  Standard Modules:                       │
+│  - hr.expense (Expense Management)       │
+│  - res.partner (Contacts)                │
+│  - account (Accounting)                  │
+├────────────────────────────────────────┤
+│  Custom Modules (odoo/addons/):          │
+│  - pisua (Apartment Management)          │
+│  - pisua_gastuak (Apartment Expenses)    │
+│  - zereginak (Task Management)           │
+│  - zereginak_pisua (Task-Apartment Link) │
+│  - baliabide_project (Resource Projects) │
+│  - baliabide_tresnak (Resource Tools)    │
+└────────────────────────────────────────┘
+               │
+               │ Odoo ORM
+               │
+        ┌──────┴──────┐
+        │  PostgreSQL  │
+        │  Database    │
+        └─────────────┘
+```
+
+## Docker Configuration
+
+### docker-compose.yaml
+
+```yaml title="docker-compose.yaml"
+services:
+  odoo:
+    image: odoo:17.0
+    depends_on:
+      - postgres
+    ports:
+      - "8069:8069"  # Odoo web interface
+    volumes:
+      - ./odoo/addons:/mnt/extra-addons  # Custom modules
+      - odoo_data:/var/lib/odoo          # Persistent data
+    environment:
+      - HOST=postgres
+      - USER=odoo
+      - PASSWORD=myodoo
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=myodoo
+      - POSTGRES_USER=odoo
+    networks:
+      - app-network
+
+  laravel_app:
+    build: ./laravel
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  odoo_data:
+
+networks:
+  app-network:
+    driver: bridge
+```
+
+**Key Points:**
+- Shared PostgreSQL database between Laravel and Odoo
+- Custom Odoo modules mounted from `./odoo/addons/`
+- Internal network communication via `app-network`
+
+## Custom Odoo Modules
+
+### Module Structure
+
+Each custom module follows Odoo's standard structure:
+
+```
+odoo/addons/pisua/
+├── __init__.py              # Python package init
+├── __manifest__.py          # Module metadata
+├── models/                  # Python models (ORM)
+│   ├── __init__.py
+│   └── pisua.py             # Apartment model
+├── views/                   # XML views (UI)
+│   └── pisua_views.xml
+└── security/                # Access control
+    └── ir.model.access.csv
+```
+
+### Pisua Module (Apartments)
+
+```python title="odoo/addons/pisua/__manifest__.py"
+{
+    'name': 'Piso y Zereginak',
+    'version': '1.0',
+    'category': 'Custom',
+    'summary': 'Gestiona pisos y tareas asociadas',
+    'depends': [],  # No dependencies on other modules
+    'data': [
+        'security/ir.model.access.csv',
+        'views/pisua_views.xml',
+    ],
+    'installable': True,
+    'application': False,
+}
+```
+
+```python title="odoo/addons/pisua/models/pisua.py"
+from odoo import models, fields, api
+
+class Pisua(models.Model):
+    _name = 'pisua.pisua'
+    _description = 'Apartment Management'
+
+    name = fields.Char(string='Apartment Name', required=True)
+    code = fields.Char(string='Join Code', size=5)
+    user_id = fields.Many2one('res.users', string='Creator')
+    
+    # Relationships
+    inquilino_ids = fields.Many2many(
+        'res.partner',
+        string='Tenants',
+        relation='pisua_partner_rel'
+    )
+    
+    gasto_ids = fields.One2many(
+        'hr.expense',
+        'pisua_id',
+        string='Expenses'
+    )
+```
+
+**Key Features:**
+- `_name` - Unique model identifier
+- `fields.Many2one` - Foreign key relationship
+- `fields.Many2many` - Junction table relationship
+- `fields.One2many` - Inverse relationship
+
+### Pisua Gastuak Module (Apartment Expenses)
+
+Extends Odoo's standard `hr.expense` model with apartment-specific fields.
+
+```python title="odoo/addons/pisua_gastuak/models/expense.py" (conceptual)
+from odoo import models, fields, api
+
+class HrExpense(models.Model):
+    _inherit = 'hr.expense'  # Extend standard expense model
+
+    # Add custom field linking to apartment
+    pisua_id = fields.Many2one(
+        'pisua.pisua',
+        string='Apartment',
+        required=True,
+        ondelete='cascade'
+    )
+    
+    # Override to add custom logic
+    @api.model
+    def create(self, vals):
+        # Custom validation or processing
+        expense = super().create(vals)
+        # Trigger notifications, etc.
+        return expense
+```
+
+### Other Custom Modules
+
+```
+odoo/addons/
+├── zereginak/              # Task management
+├── zereginak_pisua/        # Link tasks to apartments
+├── baliabide_project/      # Resource project management
+├── baliabide_tresnak/      # Resource tools
+├── gym_kudeaketa/          # Gym management (future feature)
+├── gym_sale/               # Gym sales integration
+├── zinema/                 # Cinema module (future)
+├── zinemaSale/             # Cinema sales
+└── zinema_project/         # Cinema project management
+```
+
+## Laravel Integration Layer
+
+### OdooService
+
+Laravel service class wrapping XML-RPC communication.
+
+```php title="app/Services/OdooService.php" (conceptual)
+namespace App\Services;
+
+class OdooService
+{
+    protected $url;
+    protected $db;
+    protected $username;
+    protected $password;
+    protected $uid;  // User ID after authentication
+
+    public function __construct()
+    {
+        $this->url = config('odoo.url');         // http://odoo:8069
+        $this->db = config('odoo.database');     // postgres
+        $this->username = config('odoo.username');
+        $this->password = config('odoo.password');
+        $this->authenticate();
+    }
+
+    protected function authenticate()
+    {
+        $client = new \GuzzleHttp\Client();
+        
+        // Call Odoo's authenticate endpoint
+        $response = $client->post($this->url . '/xmlrpc/2/common', [
+            'body' => xmlrpc_encode_request('authenticate', [
+                $this->db,
+                $this->username,
+                $this->password,
+                []
+            ])
+        ]);
+        
+        $this->uid = xmlrpc_decode($response->getBody());
+    }
+
+    // Create a new record
+    public function create(string $model, array $data): int
+    {
+        $response = $this->executeKw($model, 'create', [$data]);
+        return $response;  // Returns new record ID
+    }
+
+    // Read records
+    public function read(string $model, array $ids, array $fields = []): array
+    {
+        return $this->executeKw($model, 'read', [$ids, $fields]);
+    }
+
+    // Update records
+    public function write(string $model, array $params): bool
+    {
+        // $params = [[ids], [data]]
+        return $this->executeKw($model, 'write', $params);
+    }
+
+    // Delete records
+    public function unlink(string $model, array $ids): bool
+    {
+        return $this->executeKw($model, 'unlink', [$ids]);
+    }
+
+    // Search for records
+    public function search(string $model, array $domain = []): array
+    {
+        return $this->executeKw($model, 'search', [$domain]);
+    }
+
+    // Search and read in one call
+    public function searchRead(string $model, array $domain = [], array $fields = []): array
+    {
+        return $this->executeKw($model, 'search_read', [$domain], [
+            'fields' => $fields
+        ]);
+    }
+
+    // Execute any Odoo model method
+    protected function executeKw(string $model, string $method, array $args = [], array $kwargs = [])
+    {
+        $client = new \GuzzleHttp\Client();
+        
+        $response = $client->post($this->url . '/xmlrpc/2/object', [
+            'body' => xmlrpc_encode_request('execute_kw', [
+                $this->db,
+                $this->uid,
+                $this->password,
+                $model,
+                $method,
+                $args,
+                $kwargs
+            ])
+        ]);
+        
+        return xmlrpc_decode($response->getBody());
+    }
+
+    // Helper: Sync user as Odoo contact
+    public function syncUserContact(User $user): int
+    {
+        // Check if user already exists in Odoo
+        if ($user->odoo_id) {
+            return $user->odoo_id;
+        }
+
+        // Search by email
+        $existingIds = $this->search('res.partner', [
+            ['email', '=', $user->email]
+        ]);
+
+        if (!empty($existingIds)) {
+            $user->updateQuietly(['odoo_id' => $existingIds[0]]);
+            return $existingIds[0];
+        }
+
+        // Create new contact
+        $partnerId = $this->create('res.partner', [
+            'name' => $user->name,
+            'email' => $user->email,
+        ]);
+
+        $user->updateQuietly(['odoo_id' => $partnerId]);
+        return $partnerId;
+    }
+}
+```
+
+## Synchronization Strategy
+
+### Sync Fields Pattern
+
+Every synced Laravel model includes:
+
+```php
+protected $fillable = [
+    // ... other fields
+    'odoo_id',      // Odoo record ID (nullable)
+    'synced',       // Boolean: is synced?
+    'sync_error',   // Text: error message if sync fails
+];
+```
+
+### Sync Flow
+
+```
+1. User action in Laravel
+   ↓
+2. Create/update record in PostgreSQL
+   ↓
+3. Dispatch queue job (e.g., SyncGastoToOdoo)
+   ↓
+4. Job calls OdooService methods
+   ↓
+5a. SUCCESS:
+    - Save odoo_id to Laravel model
+    - Mark synced = true
+    - Clear sync_error
+   ↓
+5b. FAILURE:
+    - Keep synced = false
+    - Log error in sync_error
+    - Re-queue job for retry
+```
+
+### Example: Syncing Expenses
+
+```php title="app/Jobs/SyncGastoToOdoo.php" (from source)
+class SyncGastoToOdoo implements ShouldQueue
+{
+    use Queueable;
+    protected $gasto;
+
+    public function __construct(Gasto $gasto)
+    {
+        $this->gasto = $gasto;
+    }
+
+    public function handle(OdooService $odoo): void
+    {
+        try {
+            $this->gasto->load(['usuario', 'piso']);
+
+            // Ensure apartment is synced
+            if (!$this->gasto->piso->odoo_id) {
+                throw new Exception("Piso not synced to Odoo");
+            }
+
+            // Get or create Odoo contact for user
+            $partnerOdooId = $odoo->syncUserContact($this->gasto->usuario);
+
+            // Prepare data for Odoo hr.expense model
+            $data = [
+                'name' => $this->gasto->Nombre,
+                'date' => Carbon::parse($this->gasto->Fecha)->format('Y-m-d'),
+                'total_amount' => (float) $this->gasto->Cantidad,
+                'product_id' => 9,  // "Other" category
+                'payment_mode' => 'own_account',
+                'pisua_id' => (int) $this->gasto->piso->odoo_id,
+                'partner_id' => (int) $partnerOdooId,
+            ];
+
+            if ($this->gasto->odoo_id) {
+                // Update existing record
+                $odoo->write('hr.expense', [
+                    [$this->gasto->odoo_id],
+                    $data
+                ]);
+                Log::info("Updated expense in Odoo");
+            } else {
+                // Create new record
+                $odooGastoId = $odoo->create('hr.expense', $data);
+                
+                $this->gasto->updateQuietly([
+                    'odoo_id' => $odooGastoId,
+                    'synced' => true,
+                ]);
+                
+                Log::info("Created expense in Odoo: " . $odooGastoId);
+            }
+
+            // Mark as synced
+            $this->gasto->updateQuietly([
+                'synced' => true,
+                'sync_error' => null
+            ]);
+            
+        } catch (Exception $e) {
+            Log::error("Odoo sync error: " . $e->getMessage());
+            
+            $this->gasto->updateQuietly([
+                'sync_error' => $e->getMessage()
+            ]);
+            
+            throw $e;  // Re-throw for queue retry
+        }
+    }
+}
+```
+
+### Chained Sync Jobs
+
+Some operations require sequential syncing:
+
+```php
+use Illuminate\Support\Facades\Bus;
+
+// When creating a new apartment:
+Bus::chain([
+    new SyncUserToOdoo($user),           // 1. Ensure user exists in Odoo
+    new SyncPisoToOdoo($pisua),          // 2. Create apartment in Odoo
+    new SyncInquilinoToOdoo($user, $pisua)  // 3. Link user to apartment
+])->dispatch();
+```
+
+## Data Synchronization Examples
+
+### Syncing Apartments (Pisua)
+
+```php title="app/Jobs/SyncPisoToOdoo.php" (conceptual)
+public function handle(OdooService $odoo): void
+{
+    try {
+        $data = [
+            'name' => $this->pisua->izena,
+            'code' => $this->pisua->kodigoa,
+        ];
+
+        if ($this->pisua->odoo_id) {
+            // Update
+            $odoo->write('pisua.pisua', [[$this->pisua->odoo_id], $data]);
+        } else {
+            // Create
+            $odooId = $odoo->create('pisua.pisua', $data);
+            $this->pisua->updateQuietly(['odoo_id' => $odooId]);
+        }
+
+        $this->pisua->updateQuietly(['synced' => true, 'sync_error' => null]);
+    } catch (Exception $e) {
+        $this->pisua->updateQuietly(['sync_error' => $e->getMessage()]);
+        throw $e;
+    }
+}
+```
+
+### Syncing Tasks (Zereginak)
+
+```php title="app/Jobs/SyncZereginakToOdoo.php" (conceptual)
+public function handle(OdooService $odoo): void
+{
+    try {
+        $this->zereginak->load('pisua');
+
+        $data = [
+            'name' => $this->zereginak->izena,
+            'description' => $this->zereginak->deskripzioa,
+            'pisua_id' => (int) $this->zereginak->pisua->odoo_id,
+            'state' => $this->zereginak->egoera,
+        ];
+
+        if ($this->zereginak->odoo_id) {
+            $odoo->write('zereginak.zereginak', [[$this->zereginak->odoo_id], $data]);
+        } else {
+            $odooId = $odoo->create('zereginak.zereginak', $data);
+            $this->zereginak->updateQuietly(['odoo_id' => $odooId]);
+        }
+
+        $this->zereginak->updateQuietly(['synced' => true]);
+    } catch (Exception $e) {
+        $this->zereginak->updateQuietly(['sync_error' => $e->getMessage()]);
+        throw $e;
+    }
+}
+```
+
+### Deleting from Odoo
+
+```php title="app/Jobs/SyncDeleteGastoFromOdoo.php"
+class SyncDeleteGastoFromOdoo implements ShouldQueue
+{
+    use Queueable;
+    protected $odooId;
+
+    public function __construct(int $odooId)
+    {
+        $this->odooId = $odooId;
+    }
+
+    public function handle(OdooService $odoo): void
+    {
+        try {
+            $odoo->unlink('hr.expense', [$this->odooId]);
+            Log::info("Deleted expense from Odoo: " . $this->odooId);
+        } catch (Exception $e) {
+            Log::error("Failed to delete from Odoo: " . $e->getMessage());
+            throw $e;
+        }
+    }
+}
+```
+
+## Artisan Commands
+
+### Import Tasks from Odoo
+
+```php title="app/Console/Commands/ImportZereginakFromOdoo.php"
+class ImportZereginakFromOdoo extends Command
+{
+    protected $signature = 'odoo:import-zereginak';
+    protected $description = 'Import tasks from Odoo to Laravel';
+
+    public function handle(OdooService $odoo)
+    {
+        $this->info('Importing tasks from Odoo...');
+
+        // Search all tasks
+        $tasks = $odoo->searchRead('zereginak.zereginak', [], [
+            'id', 'name', 'description', 'pisua_id', 'state'
+        ]);
+
+        foreach ($tasks as $taskData) {
+            // Find or create in Laravel
+            Zereginak::updateOrCreate(
+                ['odoo_id' => $taskData['id']],
+                [
+                    'izena' => $taskData['name'],
+                    'deskripzioa' => $taskData['description'],
+                    'egoera' => $taskData['state'],
+                    'synced' => true,
+                ]
+            );
+        }
+
+        $this->info('Import completed!');
+    }
+}
+```
+
+## Error Handling
+
+### Retry Strategy
+
+```php
+class SyncGastoToOdoo implements ShouldQueue
+{
+    public $tries = 3;           // Retry 3 times
+    public $backoff = [60, 300]; // Wait 1 min, then 5 min
+    public $timeout = 120;       // 2 minute timeout
+
+    // If all retries fail, store error
+    public function failed(Exception $exception)
+    {
+        $this->gasto->updateQuietly([
+            'sync_error' => 'Max retries exceeded: ' . $exception->getMessage()
+        ]);
+    }
+}
+```
+
+### Monitoring Sync Status
+
+```php
+// Find all unsynced expenses
+$unsyncedGastos = Gasto::where('synced', false)->get();
+
+// Find expenses with errors
+$failedGastos = Gasto::whereNotNull('sync_error')->get();
+
+// Retry failed syncs
+foreach ($failedGastos as $gasto) {
+    SyncGastoToOdoo::dispatch($gasto);
+}
+```
+
+## Benefits of This Architecture
+
+### Separation of Concerns
+- **Laravel**: User interface, authentication, real-time operations
+- **Odoo**: Financial reporting, accounting, complex business logic
+
+### Scalability
+- Each system can scale independently
+- Queue system prevents blocking
+- Async sync doesn't impact user experience
+
+### Data Integrity
+- PostgreSQL as single source of truth
+- Sync errors tracked and can be retried
+- No data loss if Odoo is temporarily unavailable
+
+### Flexibility
+- Can switch ERP systems without changing Laravel code (swap OdooService)
+- Custom Odoo modules extend without Laravel changes
+- Can add other integrations (QuickBooks, Xero) using same pattern
+
+## Future Enhancements
+
+### Real-time Sync
+```php
+// Use Laravel Echo + WebSockets
+broadcast(new ExpenseSyncedEvent($gasto));
+```
+
+### Webhook Integration
+```php
+// Odoo calls Laravel when data changes
+Route::post('/webhooks/odoo', [WebhookController::class, 'handle']);
+```
+### Batch Sync
+```php
+// Sync multiple records in one API call
+$odoo->create('hr.expense', [
+    $expense1Data,
+    $expense2Data,
+    // ...
+]);
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Laravel Backend" icon="server" href="/architecture/laravel-backend">
+    Learn about Laravel queue jobs and sync implementation
+  </Card>
+  
+  <Card title="Database Schema" icon="database" href="/architecture/database-schema">
+    See how sync fields are structured in the database
+  </Card>
+</CardGroup>

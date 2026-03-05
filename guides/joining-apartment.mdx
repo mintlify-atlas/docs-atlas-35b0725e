@@ -1,0 +1,236 @@
+---
+title: 'Joining an Apartment'
+description: 'How to join an existing shared apartment using an apartment code'
+icon: 'arrow-right-to-bracket'
+---
+
+This guide explains how to join an existing apartment in 7POINTS.NET using the apartment code provided by a roommate.
+
+## Prerequisites
+
+Before you can join an apartment, you need:
+
+- A registered account on 7POINTS.NET
+- The **5-digit apartment code** from your coordinator or roommate
+- To be logged in to your account
+
+<Tip>
+Ask your roommate or apartment coordinator for the apartment code. They can find it on the members page of the apartment.
+</Tip>
+
+## Step-by-Step Process
+
+<Steps>
+  <Step title="Access the Join Flow">
+    After logging in, you'll see the apartment selection screen if you don't have any apartments yet.
+    
+    On this screen, click **"Pisu batera batu"** (Join an apartment) to proceed to the code entry form.
+    
+    If you already belong to other apartments:
+    - Navigate to `/pisua/aukeratu` (apartment selection)
+    - Click "Pisu batera batu"
+  </Step>
+
+  <Step title="Enter the Apartment Code">
+    You'll see a form titled **"Sartu Pisuaren Kodea"** (Enter Apartment Code).
+    
+    1. In the input field, type the 5-digit code your roommate provided
+       - Example format: `00123`, `45678`, `98765`
+       - The code is case-insensitive and numeric
+    
+    2. The input field is styled with:
+       - Large, centered text for easy reading
+       - Wide letter spacing (tracking-widest) for clarity
+       - Auto-focus for immediate typing
+    
+    <Note>
+    Make sure you enter the exact code provided. If you get an error, double-check with your roommate that you have the correct code.
+    </Note>
+  </Step>
+
+  <Step title="Submit and Validate">
+    Click **"Sartu Pisuan"** (Join Apartment) to submit the form.
+    
+    The system will:
+    - Validate that the code exists in the database
+    - Check if you're already a member (prevents duplicates)
+    - Add you to the apartment as a regular member
+    
+    While processing, the button shows **"Egiaztatzen..."** (Verifying...).
+    
+    <Warning>
+    If you see the error message "Kode hori ez da existitzen. (El código no existe)", it means:
+    - The code doesn't exist in the system
+    - There might be a typo in the code
+    - The code might be for a deleted apartment
+    
+    Double-check the code with your roommate.
+    </Warning>
+  </Step>
+
+  <Step title="Confirmation and Access">
+    After successful validation:
+    - You're added to the apartment with `mota: 'normala'` (regular member role)
+    - The apartment is set as your active apartment
+    - Your membership is synchronized with the Odoo backend
+    - You're automatically redirected to the dashboard
+    
+    You now have full access to:
+    - View and manage tasks
+    - Add and view expenses
+    - See other apartment members
+    - All standard member features
+  </Step>
+</Steps>
+
+## What Happens After Joining
+
+### Immediate Access
+
+Once you join, you can immediately:
+
+<CardGroup cols={2}>
+  <Card title="View Members" icon="users">
+    See all roommates in the apartment and their roles
+  </Card>
+  <Card title="Manage Tasks" icon="list-check">
+    View, create, and complete household tasks
+  </Card>
+  <Card title="Track Expenses" icon="wallet">
+    Add expenses and see who owes what
+  </Card>
+  <Card title="View History" icon="clock">
+    Access all historical data from the apartment
+  </Card>
+</CardGroup>
+
+### Your Role
+
+As a new member joining via code, you get:
+- **Regular member** status (not coordinator)
+- Ability to participate in all apartment activities
+- View all expenses, tasks, and member information
+- Add your own expenses and complete tasks
+
+<Info>
+The coordinator can promote you to coordinator status later if needed. See [Member Roles](/guides/member-roles) for details about permissions.
+</Info>
+
+## Common Scenarios
+
+<AccordionGroup>
+  <Accordion title="Joining Multiple Apartments">
+    You can be a member of multiple apartments simultaneously:
+    
+    1. You'll see all your apartments in the apartment list
+    2. Switch between them using `/pisua/erakutsi`
+    3. Each apartment maintains its own tasks, expenses, and members
+    4. Your role may differ across apartments
+    
+    This is useful if you:
+    - Move to a new place but keep old apartment records
+    - Help manage family properties
+    - Participate in multiple shared living arrangements
+  </Accordion>
+  
+  <Accordion title="Already a Member">
+    If you try to join an apartment you're already in:
+    - The system uses `syncWithoutDetaching` to prevent duplicates
+    - Your existing membership is preserved
+    - You're simply redirected to the dashboard
+    - No error is shown
+    
+    This prevents accidental duplicate memberships.
+  </Accordion>
+  
+  <Accordion title="Joining After Being Removed">
+    If you were previously removed from an apartment:
+    - You can rejoin using the apartment code (if you still have it)
+    - You'll be added as a new member with regular status
+    - Your previous history in the apartment is not restored
+    - The coordinator can remove you again if needed
+  </Accordion>
+  
+  <Accordion title="Code Security">
+    Apartment codes are permanent and anyone with the code can join:
+    
+    **Security implications:**
+    - Codes are not encrypted or hashed
+    - No expiration date
+    - No approval process required
+    
+    **Best practices:**
+    - Only share codes with trusted roommates
+    - If security is compromised, the coordinator can change the code
+    - Consider changing the code if someone leaves on bad terms
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Error Messages
+
+<ResponseField name="Kode hori ez da existitzen">
+  **Translation**: "This code does not exist"
+  
+  **Causes**:
+  - Typo in the code
+  - Code for a deleted apartment
+  - Invalid code format
+  
+  **Solution**: Verify the code with your roommate
+</ResponseField>
+
+<ResponseField name="Egiaztatzen... (stuck)">
+  **Translation**: "Verifying..."
+  
+  **Causes**:
+  - Network connectivity issues
+  - Backend synchronization delay
+  - Server timeout
+  
+  **Solution**: Wait a moment, then refresh and try again
+</ResponseField>
+
+### Can't Find the Join Option
+
+If you don't see the join button:
+
+1. **Make sure you're logged in** - The feature requires authentication
+2. **Navigate directly** - Go to `/pisua/aukeratu` in your browser
+3. **Check your account** - Ensure your email is verified
+
+### Code Format Issues
+
+Valid apartment codes are:
+- Exactly 5 digits
+- May have leading zeros (e.g., `00123`)
+- Numeric only (no letters or special characters)
+- Generated automatically by the system
+
+## After Joining: Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Meet Your Roommates" icon="handshake" href="/guides/member-roles">
+    View apartment members and understand roles
+  </Card>
+  <Card title="Add Your First Expense" icon="money-bill-wave" href="/guides/managing-expenses">
+    Start tracking shared expenses
+  </Card>
+  <Card title="Check Tasks" icon="clipboard-list" href="/guides/task-management">
+    See what household tasks are assigned
+  </Card>
+  <Card title="Customize Your Profile" icon="user-cog" href="/settings/profile">
+    Update your profile information
+  </Card>
+</CardGroup>
+
+## Technical Details
+
+- **Route**: `POST /pisua/batu` (defined in `routes/web.php:23`)
+- **Controller**: `PisoController@join` (`app/Http/Controllers/PisoController.php:29`)
+- **Validation**: Code must exist in `pisua.kodigoa` column
+- **Duplicate Prevention**: Uses `syncWithoutDetaching` to avoid duplicate memberships
+- **Default Role**: New members get `mota: 'normala'`
+- **Session Update**: Active apartment is automatically set in session
+- **Synchronization**: Membership is queued for Odoo sync via `SyncInquilinoToOdoo` job

@@ -1,0 +1,462 @@
+---
+title: 'Member Management'
+description: 'Manage apartment members, assign roles, and control permissions'
+icon: 'users'
+---
+
+## Overview
+
+Member Management in 7POINTS.NET controls who has access to each apartment and what they can do. The system uses a two-tier role system: Coordinators (koordinatzailea) and Regular Members (normala).
+
+<CardGroup cols={2}>
+  <Card title="Two Role System" icon="shield">
+    Coordinators have full control, regular members have standard access
+  </Card>
+  <Card title="Promote Coordinators" icon="arrow-up">
+    Transfer coordinator role to another member
+  </Card>
+  <Card title="Remove Members" icon="user-minus">
+    Coordinators can remove members from apartments
+  </Card>
+  <Card title="Automatic Succession" icon="crown">
+    When a coordinator leaves, oldest member becomes new coordinator
+  </Card>
+</CardGroup>
+
+## User Roles
+
+### Coordinator (Koordinatzailea)
+
+Coordinators have full apartment management permissions:
+
+- **Edit apartment settings** (name and code)
+- **Delete the apartment**
+- **Promote other members** to coordinator
+- **Remove members** from the apartment
+- **All standard member permissions**
+
+<Note>
+When you create an apartment, you automatically become its coordinator.
+</Note>
+
+### Regular Member (Normala)
+
+Regular members can:
+
+- **View apartment details** and code
+- **Add and edit expenses**
+- **Create and manage tasks**
+- **View other members**
+- **Leave the apartment** voluntarily
+
+<Warning>
+Regular members cannot modify apartment settings, promote coordinators, or remove other members.
+</Warning>
+
+## User Workflows
+
+### Viewing Members
+
+1. Select your apartment from the dashboard
+2. Navigate to **Pisua / Kideak** (Apartment / Members)
+3. View list of all members with:
+   - Name and email
+   - Role badge (coordinator or regular member)
+   - Join date
+   - Profile initial avatar
+
+### Promoting a Member to Coordinator
+
+<Info>
+Only coordinators can perform this action. Promoting another member automatically demotes you to regular member.
+</Info>
+
+1. Go to Members page
+2. Click the three-dot menu (⋮) next to the member's name
+3. Select **Koordinatzaile egin** (Make Coordinator)
+4. System demotes you and promotes the selected member
+
+**Why this works this way**: To prevent multiple coordinators and ensure clear accountability, the role is transferred rather than shared.
+
+### Removing a Member
+
+<Info>
+Only coordinators can remove other members. Anyone can leave voluntarily.
+</Info>
+
+1. Go to Members page
+2. Click the three-dot menu (⋮) next to the member
+3. Select **Pisotik kendu** (Remove from apartment)
+4. Confirm the action
+5. Member loses access to the apartment
+
+### Leaving an Apartment
+
+Any member can leave voluntarily:
+
+1. Go to Members page
+2. Click **Atera pisutik** (Leave apartment) at the bottom
+3. Confirm you want to leave
+4. You're removed from the apartment
+
+**Special case for coordinators**: If you're the coordinator and leave, the oldest remaining member automatically becomes the new coordinator.
+
+## Technical Implementation
+
+### The User Model
+
+Users are represented by the standard Laravel `User` model with Odoo sync:
+
+```php ~/workspace/source/laravel/app/Models/User.php
+class User extends Authenticatable
+{
+    use HasFactory, Notifiable, TwoFactorAuthenticatable;
+
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'odoo_id',      // Odoo sync ID
+        'synced',       // Sync status
+        'sync_error'    // Error messages
+    ];
+
+    protected $hidden = [
+        'password',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'remember_token',
+    ];
+
+    // Many-to-many relationship with apartments
+    public function pisuak(){
+        return $this->belongsToMany(Piso::class, 'piso_user', 'user_id', 'piso_id')
+            ->withPivot('mota')  // Role: 'koordinatzailea' or 'normala'
+            ->withTimestamps();
+    }
+}
+```
+
+### Pivot Table Structure
+
+The `piso_user` table connects users to apartments:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| user_id | integer | User's ID |
+| piso_id | integer | Apartment's ID |
+| mota | string | Role: 'koordinatzailea' or 'normala' |
+| created_at | timestamp | When user joined apartment |
+| updated_at | timestamp | Last role change |
+
+### Role Values
+
+- `'koordinatzailea'` - Coordinator with full permissions
+- `'normala'` - Regular member with standard access
+
+## API Endpoints
+
+### View Members
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::get('/pisua/kideak', [PisoController::class, 'showMembers'])
+    ->name('pisua.kideak');
+```
+
+**Implementation (see PisoController.php:194):**
+
+```php
+public function showMembers()
+{
+    $pisuaId = session('pisua_id');
+
+    if (!$pisuaId) {
+        return redirect()->route('pisua.show');
+    }
+
+    $pisua = Piso::with('inquilinos')->findOrFail($pisuaId);
+
+    // Check if current user is coordinator
+    $currentUser = $pisua->inquilinos->find(auth()->id());
+    $isCurrentUserAdmin = $currentUser && 
+        $currentUser->pivot->mota === 'koordinatzailea';
+
+    return Inertia::render('pisuaIkusi/pisua_ikusi', [
+        'pisua' => $pisua,
+        'kideak' => $pisua->inquilinos,
+        'isCurrentUserAdmin' => $isCurrentUserAdmin,
+    ]);
+}
+```
+
+### Promote Member to Coordinator
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::put('/pisua/{pisuaId}/kidea/{memberId}/promote', 
+    [PisoController::class, 'promoteMember']);
+```
+
+**Implementation (see PisoController.php:219):**
+
+```php
+public function promoteMember(Request $request, $pisuaId, $memberId)
+{
+    $pisua = Piso::findOrFail($pisuaId);
+    
+    // Authorization: only coordinators can promote
+    Gate::authorize('update', $pisua);
+
+    return DB::transaction(function () use ($request, $pisua, $memberId) {
+        $currentUserId = $request->user()->id;
+
+        // 1. Demote current coordinator to regular member
+        $pisua->inquilinos()->updateExistingPivot($currentUserId, 
+            ['mota' => 'normala']);
+
+        // 2. Promote new member to coordinator
+        $pisua->inquilinos()->updateExistingPivot($memberId, 
+            ['mota' => 'koordinatzailea']);
+
+        return back();
+    });
+}
+```
+
+<Info>
+The operation runs in a database transaction to ensure atomicity - both role changes succeed or both fail.
+</Info>
+
+### Remove Member
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::delete('/pisua/{pisuaId}/kidea/{memberId}/remove', 
+    [PisoController::class, 'removeMember']);
+```
+
+**Implementation (see PisoController.php:240):**
+
+```php
+public function removeMember($pisuaId, $memberId)
+{
+    $pisua = Piso::findOrFail($pisuaId);
+
+    // Authorization: coordinators can remove others, 
+    // anyone can remove themselves
+    if ($memberId != auth()->id()) {
+        Gate::authorize('update', $pisua);
+    }
+
+    // Remove the relationship
+    $pisua->inquilinos()->detach($memberId);
+
+    // If user removed themselves, clear their session
+    if ($memberId == auth()->id() && session('pisua_id') == $pisuaId) {
+        session()->forget('pisua_id');
+        session()->forget('pisua_izena');
+        return redirect()->route('dashboard');
+    }
+
+    return back();
+}
+```
+
+### Leave Apartment (Self-Remove)
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::delete('/pisua/{pisua}/atera', [PisoController::class, 'atera'])
+    ->name('pisua.atera');
+```
+
+**Implementation (see PisoController.php:262):**
+
+```php
+public function atera(Piso $pisua)
+{
+    $user = auth()->user();
+    $miembro = $pisua->inquilinos()->where('users.id', $user->id)->first();
+
+    if (!$miembro) {
+        abort(403, 'Ez zara pisu honetako kidea.');
+    }
+
+    // Check if leaving user is coordinator
+    $eraCoordinador = $miembro->pivot->mota === 'koordinatzailea';
+
+    // Remove user from apartment
+    $pisua->inquilinos()->detach($user->id);
+
+    // If coordinator left, promote oldest remaining member
+    if ($eraCoordinador) {
+        $nuevoJefe = $pisua->inquilinos()
+            ->wherePivotNotNull('created_at')
+            ->orderByPivot('created_at', 'asc')  // Oldest first
+            ->first();
+
+        if ($nuevoJefe) {
+            $pisua->inquilinos()->updateExistingPivot($nuevoJefe->id, 
+                ['mota' => 'koordinatzailea']);
+        }
+    }
+
+    // Clear session
+    if (session('pisua_id') == $pisua->id) {
+        session()->forget('pisua_id');
+        session()->forget('pisua_izena');
+    }
+
+    return redirect()->route('dashboard')
+        ->with('message', 'Pisutik ondo atera zara.');
+}
+```
+
+## Authorization & Security
+
+### Laravel Gate for Permissions
+
+7POINTS.NET uses Laravel's Gate system to check coordinator status:
+
+```php
+Gate::authorize('update', $pisua);
+```
+
+This verifies that:
+1. User is authenticated
+2. User belongs to the apartment
+3. User's role is 'koordinatzailea'
+
+<Warning>
+Always check authorization before allowing member management actions. Missing these checks creates security vulnerabilities.
+</Warning>
+
+### Self-Service Exception
+
+Users can always remove themselves without coordinator permissions:
+
+```php
+if ($memberId != auth()->id()) {
+    Gate::authorize('update', $pisua);
+}
+```
+
+This allows anyone to leave voluntarily while preventing regular members from removing others.
+
+## Frontend Components
+
+### Member Card Component
+
+The member UI displays role badges and management menus:
+
+```tsx ~/workspace/source/laravel/resources/js/pages/pisuaIkusi/pisua_ikusi.tsx
+interface Kidea {
+    id: number;
+    name: string;
+    email: string;
+    pivot: {
+        mota: string;  // 'koordinatzailea' or 'normala'
+        created_at: string;
+    };
+}
+
+export default function PisuaIkusi({ 
+    pisua, 
+    kideak, 
+    isCurrentUserAdmin 
+}: Props) {
+    // For each member
+    const isThisUserAdmin = kidea.pivot.mota === 'koordinatzailea';
+
+    return (
+        <div className="relative bg-white rounded-xl">
+            {/* Avatar with color coding */}
+            <div className={isThisUserAdmin ? 
+                'bg-indigo-100 text-indigo-600' : 
+                'bg-gray-100 text-gray-600'
+            }>
+                {kidea.name.charAt(0).toUpperCase()}
+            </div>
+
+            {/* Role badge */}
+            {isThisUserAdmin ? (
+                <span className="bg-indigo-100 text-indigo-700">
+                    <ShieldCheck /> Koordinatzailea
+                </span>
+            ) : (
+                <span className="bg-gray-100 text-gray-600">
+                    <User /> Kidea
+                </span>
+            )}
+
+            {/* Three-dot menu (only for coordinators) */}
+            {isCurrentUserAdmin && !isThisUserAdmin && (
+                <DropdownMenu>
+                    <DropdownMenuItem onClick={() => handlePromote(kidea.id)}>
+                        Koordinatzaile egin
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleKick(kidea.id)}>
+                        Pisotik kendu
+                    </DropdownMenuItem>
+                </DropdownMenu>
+            )}
+        </div>
+    );
+}
+```
+
+### Key UI Features
+
+- **Color-Coded Avatars**: Indigo for coordinators, gray for regular members
+- **Role Badges**: Shield icon for coordinators, user icon for members
+- **Conditional Menus**: Three-dot menu only visible to coordinators
+- **Self-Service Button**: "Leave apartment" button always visible
+- **Copyable Code**: Click to copy apartment code for inviting others
+
+## Coordinator Succession Logic
+
+When a coordinator leaves (see PisoController.php:279-290):
+
+1. **Detect coordinator departure**: Check if `mota === 'koordinatzailea'`
+2. **Find oldest member**: Query with `orderByPivot('created_at', 'asc')`
+3. **Promote automatically**: Update pivot to `'mota' => 'koordinatzailea'`
+4. **Handle empty apartments**: If no members remain, apartment persists but has no coordinator
+
+<Tip>
+The oldest member (by join date) becomes coordinator to reward seniority and ensure a stable transition.
+</Tip>
+
+## Best Practices
+
+<Tip>
+**Database Transactions**: Use `DB::transaction()` when making multiple related updates (like role swaps) to ensure data consistency.
+</Tip>
+
+<Tip>
+**Session Management**: Always clear apartment session data when a user leaves or is removed to prevent unauthorized access.
+</Tip>
+
+<Tip>
+**UI Feedback**: Provide clear visual indicators (badges, colors) to help users understand their permissions at a glance.
+</Tip>
+
+<Warning>
+Never allow multiple coordinators per apartment. The single-coordinator model ensures clear accountability and prevents permission conflicts.
+</Warning>
+
+## Permission Matrix
+
+| Action | Coordinator | Regular Member |
+|--------|-------------|----------------|
+| View members | ✅ Yes | ✅ Yes |
+| View apartment code | ✅ Yes | ✅ Yes |
+| Edit apartment settings | ✅ Yes | ❌ No |
+| Delete apartment | ✅ Yes | ❌ No |
+| Promote coordinator | ✅ Yes | ❌ No |
+| Remove other members | ✅ Yes | ❌ No |
+| Leave voluntarily | ✅ Yes | ✅ Yes |
+| Add expenses | ✅ Yes | ✅ Yes |
+| Create tasks | ✅ Yes | ✅ Yes |
+
+## Related Features
+
+- [Apartments](/features/apartments) - Members belong to apartments
+- [Expenses](/features/expenses) - Members pay and owe expenses
+- [Tasks](/features/tasks) - Members are assigned tasks

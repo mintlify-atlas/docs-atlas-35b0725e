@@ -1,0 +1,786 @@
+---
+title: Database Schema
+description: PostgreSQL database design and relationships
+---
+
+7POINTS.NET uses PostgreSQL 15 as the primary database, shared between Laravel and Odoo for data consistency and efficient querying.
+
+## Database Architecture
+
+```
+┌─────────────────────────────────────────┐
+│         PostgreSQL Database             │
+├─────────────────────────────────────────┤
+│  Laravel Tables:                        │
+│  - users                                │
+│  - pisua (apartments)                   │
+│  - piso_user (pivot)                    │
+│  - gastos (expenses)                    │
+│  - zereginak (tasks)                    │
+│  - egin (task assignments pivot)        │
+│  - ordainketas (payments)               │
+│  - cache, sessions, jobs                │
+├─────────────────────────────────────────┤
+│  Odoo Tables (managed by Odoo ORM):     │
+│  - hr_expense                           │
+│  - res_partner                          │
+│  - pisua_pisua (custom)                 │
+│  - zereginak_zereginak (custom)         │
+│  - ... (100+ standard Odoo tables)      │
+└─────────────────────────────────────────┘
+```
+
+## Entity Relationship Diagram
+
+```
+┌───────────────┐
+│     users     │
+│───────────────│
+│ id (PK)       │
+│ name          │
+│ email (UNIQUE)│
+│ password      │
+│ odoo_id       │◄──────────┐
+│ synced        │           │
+│ sync_error    │           │
+└───────┬───────┘           │
+        │                   │
+        │                   │ Many-to-Many
+        │                   │ via piso_user
+        │                   │
+        │         ┌─────────┴───────┐
+        │         │   piso_user     │
+        │         │─────────────────│
+        │         │ id (PK)         │
+        │    ┌────┤ piso_id (FK)    │
+        │    │    │ user_id (FK)    │
+        │    │    │ mota (role)     │
+        │    │    │ fecha_salida    │
+        │    │    └─────────────────┘
+        │    │
+        │    │    ┌─────────────────┐
+        │    └────►     pisua       │
+        │         │─────────────────│
+        │         │ id (PK)         │
+        │         │ izena           │
+        │         │ kodigoa (UNIQUE)│
+        │         │ user_id (FK)────┼───┐ Creator
+        │         │ odoo_id         │   │
+        │         │ synced          │   │
+        │         │ sync_error      │   │
+        │         └───────┬─────────┘   │
+        │                 │             │
+        │                 │             │
+        └─────────────────┘             │
+                          │             │
+         ┌────────────────┼─────────────┘
+         │                │
+         │                │
+    ┌────▼────┐      ┌────▼────────┐
+    │ gastos  │      │ ordainketas │
+    │─────────│      │─────────────│
+    │ IdGasto │      │ id (PK)     │
+    │ IdPiso  │      │ piso_id (FK)│
+    │ IdUsuario│     │ deudor_id   │
+    │ Cantidad │     │ acreedor_id │
+    │ Nombre   │     │ cantidad    │
+    │ Fecha    │     └─────────────┘
+    │ odoo_id  │
+    │ synced   │
+    └──────────┘
+
+    ┌─────────────┐
+    │  zereginak  │
+    │─────────────│
+    │ id (PK)     │
+    │ izena       │
+    │ deskripzioa │
+    │ pisua_id(FK)├────┐
+    │ egoera      │    │
+    │ odoo_id     │    │
+    │ synced      │    │
+    └──────┬──────┘    │
+           │           │
+           │           │
+    ┌──────▼──────┐    │
+    │    egin     │    │
+    │ (pivot)     │    │
+    │─────────────│    │
+    │ id (PK)     │    │
+    │ erabiltzailea_id │
+    │ zereginak_id│    │
+    │ hasiera_data│    │
+    │ amaiera_data│    │
+    └─────────────┘    │
+                       │
+                   to pisua
+```
+
+## Core Tables
+
+### users
+
+Stores user accounts with authentication credentials.
+
+```sql
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    email_verified_at TIMESTAMP NULL,
+    password VARCHAR(255) NOT NULL,
+    remember_token VARCHAR(100) NULL,
+    
+    -- Two-Factor Authentication (Laravel Fortify)
+    two_factor_secret TEXT NULL,
+    two_factor_recovery_codes TEXT NULL,
+    two_factor_confirmed_at TIMESTAMP NULL,
+    
+    -- Odoo Sync Fields
+    odoo_id BIGINT NULL,
+    synced BOOLEAN DEFAULT FALSE,
+    sync_error TEXT NULL,
+    
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_odoo_id ON users(odoo_id);
+```
+
+**Key Fields:**
+- `id` - Primary key (auto-increment)
+- `email` - Unique identifier for login
+- `password` - Bcrypt hashed password
+- `two_factor_*` - 2FA fields managed by Laravel Fortify
+- `odoo_id` - Foreign key to Odoo's `res.partner` table
+- `synced` - Boolean indicating if user is synced with Odoo
+- `sync_error` - Error message if sync fails
+
+**Relationships:**
+- Many-to-many with `pisua` via `piso_user` pivot
+- One-to-many with `gastos` (user's expenses)
+- Many-to-many with `zereginak` via `egin` (task assignments)
+
+### pisua (Apartments)
+
+Represents shared apartments/flats.
+
+```sql
+CREATE TABLE pisua (
+    id BIGSERIAL PRIMARY KEY,
+    izena VARCHAR(255) NOT NULL,
+    kodigoa VARCHAR(5) UNIQUE NOT NULL,
+    user_id BIGINT NOT NULL,
+    
+    -- Odoo Sync Fields
+    odoo_id BIGINT NULL,
+    synced BOOLEAN DEFAULT FALSE,
+    sync_error TEXT NULL,
+    
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_pisua_kodigoa ON pisua(kodigoa);
+CREATE INDEX idx_pisua_user_id ON pisua(user_id);
+CREATE INDEX idx_pisua_odoo_id ON pisua(odoo_id);
+```
+
+**Key Fields:**
+- `izena` - Apartment name (e.g., "Campus Housing 2A")
+- `kodigoa` - 5-digit unique code for joining (e.g., "04729")
+- `user_id` - Creator of the apartment (coordinator)
+- `odoo_id` - Foreign key to Odoo's `pisua.pisua` custom model
+
+**Unique Constraint:**
+- `kodigoa` must be unique across all apartments
+
+**Relationships:**
+- Many-to-many with `users` via `piso_user`
+- One-to-many with `gastos`
+- One-to-many with `zereginak`
+- One-to-many with `ordainketas`
+
+### piso_user (Pivot Table)
+
+Junction table linking users to apartments with roles.
+
+```sql
+CREATE TABLE piso_user (
+    id BIGSERIAL PRIMARY KEY,
+    piso_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    mota VARCHAR(50) DEFAULT 'normala',  -- 'koordinatzailea' or 'normala'
+    fecha_salida TIMESTAMP NULL,
+    
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    FOREIGN KEY (piso_id) REFERENCES pisua(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    
+    UNIQUE(piso_id, user_id)  -- User can only join apartment once
+);
+
+CREATE INDEX idx_piso_user_piso ON piso_user(piso_id);
+CREATE INDEX idx_piso_user_user ON piso_user(user_id);
+CREATE INDEX idx_piso_user_mota ON piso_user(mota);
+```
+
+**Key Fields:**
+- `mota` - User role in apartment:
+  - `koordinatzailea` - Coordinator (admin, can manage members)
+  - `normala` - Normal tenant (regular access)
+- `fecha_salida` - Exit date (if user leaves apartment)
+
+**Business Rules:**
+- Each apartment must have exactly one `koordinatzailea`
+- If coordinator leaves, oldest remaining tenant is auto-promoted
+- Users can belong to multiple apartments simultaneously
+
+**Laravel Eloquent Usage:**
+```php
+// Get user's apartments with role
+$user->pisuak()->wherePivot('mota', 'koordinatzailea')->get();
+
+// Get apartment tenants
+$piso->inquilinos()->withPivot('mota')->get();
+```
+
+### gastos (Expenses)
+
+Tracks shared expenses paid by tenants.
+
+```sql
+CREATE TABLE gastos (
+    IdGasto BIGSERIAL PRIMARY KEY,
+    IdUsuario BIGINT NOT NULL,
+    IdPiso BIGINT NOT NULL,
+    Cantidad DECIMAL(10, 2) NOT NULL,
+    Nombre VARCHAR(255) NOT NULL,
+    Fecha DATE NOT NULL,
+    
+    -- Odoo Sync Fields
+    odoo_id BIGINT NULL,
+    synced BOOLEAN DEFAULT FALSE,
+    sync_error TEXT NULL,
+    
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    FOREIGN KEY (IdUsuario) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (IdPiso) REFERENCES pisua(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_gastos_piso ON gastos(IdPiso);
+CREATE INDEX idx_gastos_usuario ON gastos(IdUsuario);
+CREATE INDEX idx_gastos_fecha ON gastos(Fecha);
+CREATE INDEX idx_gastos_odoo_id ON gastos(odoo_id);
+```
+
+**Key Fields:**
+- `IdGasto` - Primary key (custom name for legacy reasons)
+- `IdUsuario` - User who paid the expense
+- `IdPiso` - Apartment the expense belongs to
+- `Cantidad` - Amount in currency (2 decimal places)
+- `Nombre` - Expense description (e.g., "Groceries", "Utilities")
+- `Fecha` - Date of expense
+- `odoo_id` - Foreign key to Odoo's `hr.expense` table
+
+**Odoo Integration:**
+- Synced to Odoo's `hr.expense` model for financial reporting
+- Includes `pisua_id` custom field in Odoo
+- Category defaults to "Other" (product_id = 9)
+
+### ordainketas (Payments)
+
+Records debt settlements between tenants.
+
+```sql
+CREATE TABLE ordainketas (
+    id BIGSERIAL PRIMARY KEY,
+    piso_id BIGINT NOT NULL,
+    deudor_id BIGINT NOT NULL,    -- User who owes money
+    acreedor_id BIGINT NOT NULL,  -- User who is owed money
+    cantidad DECIMAL(10, 2) NOT NULL,
+    
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    FOREIGN KEY (piso_id) REFERENCES pisua(id) ON DELETE CASCADE,
+    FOREIGN KEY (deudor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (acreedor_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_ordainketas_piso ON ordainketas(piso_id);
+CREATE INDEX idx_ordainketas_deudor ON ordainketas(deudor_id);
+CREATE INDEX idx_ordainketas_acreedor ON ordainketas(acreedor_id);
+```
+
+**Key Fields:**
+- `deudor_id` - User who pays (debtor)
+- `acreedor_id` - User who receives payment (creditor)
+- `cantidad` - Amount paid
+
+**Business Logic:**
+Frontend calculates who owes whom based on:
+1. All expenses in the apartment
+2. Equal split among tenants
+3. Previous settlements (ordainketas)
+
+When users settle debts, a new `Ordainketa` record is created to track the payment.
+
+### zereginak (Tasks)
+
+Manages household tasks and chores.
+
+```sql
+CREATE TABLE zereginak (
+    id BIGSERIAL PRIMARY KEY,
+    izena VARCHAR(255) NOT NULL,
+    deskripzioa TEXT NULL,
+    pisua_id BIGINT NOT NULL,
+    egoera VARCHAR(50) DEFAULT 'pending',  -- pending, in_progress, completed
+    
+    -- Odoo Sync Fields
+    odoo_id BIGINT NULL,
+    synced BOOLEAN DEFAULT FALSE,
+    sync_error TEXT NULL,
+    
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    FOREIGN KEY (pisua_id) REFERENCES pisua(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_zereginak_pisua ON zereginak(pisua_id);
+CREATE INDEX idx_zereginak_egoera ON zereginak(egoera);
+CREATE INDEX idx_zereginak_odoo_id ON zereginak(odoo_id);
+```
+
+**Key Fields:**
+- `izena` - Task name (e.g., "Clean kitchen")
+- `deskripzioa` - Detailed description (optional)
+- `pisua_id` - Apartment the task belongs to
+- `egoera` - Task status (pending, in_progress, completed)
+
+**Relationships:**
+- Belongs to one `pisua`
+- Many-to-many with `users` via `egin` (assigned users)
+
+### egin (Task Assignments Pivot)
+
+Junction table linking tasks to assigned users with scheduling.
+
+```sql
+CREATE TABLE egin (
+    id BIGSERIAL PRIMARY KEY,
+    erabiltzailea_id BIGINT NOT NULL,  -- Assigned user
+    zereginak_id BIGINT NOT NULL,      -- Task
+    hasiera_data TIMESTAMP NOT NULL,    -- Start date/time
+    amaiera_data TIMESTAMP NULL,        -- End date/time (optional)
+    
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    FOREIGN KEY (erabiltzailea_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (zereginak_id) REFERENCES zereginak(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_egin_erabiltzailea ON egin(erabiltzailea_id);
+CREATE INDEX idx_egin_zereginak ON egin(zereginak_id);
+CREATE INDEX idx_egin_dates ON egin(hasiera_data, amaiera_data);
+```
+
+**Key Fields:**
+- `hasiera_data` - When task assignment starts
+- `amaiera_data` - When task assignment ends (nullable for one-time tasks)
+
+**Usage:**
+This table enables:
+- Recurring task rotations (e.g., weekly kitchen cleaning)
+- Calendar view of assigned tasks
+- Historical tracking of who did what
+
+**Laravel Eloquent:**
+```php
+// Get user's assigned tasks with dates
+$user->zereginak()->withPivot(['hasiera_data', 'amaiera_data'])->get();
+
+// Assign task to user with schedule
+$zereginak->erabiltzaileak()->attach($userId, [
+    'hasiera_data' => '2026-03-05 09:00:00',
+    'amaiera_data' => '2026-03-12 09:00:00',
+]);
+```
+
+## System Tables
+
+### Laravel Framework Tables
+
+```sql
+-- Cache storage
+CREATE TABLE cache (
+    key VARCHAR(255) PRIMARY KEY,
+    value TEXT NOT NULL,
+    expiration INTEGER NOT NULL
+);
+
+-- Queue jobs
+CREATE TABLE jobs (
+    id BIGSERIAL PRIMARY KEY,
+    queue VARCHAR(255) NOT NULL,
+    payload TEXT NOT NULL,
+    attempts SMALLINT NOT NULL DEFAULT 0,
+    reserved_at INTEGER NULL,
+    available_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+-- Failed queue jobs
+CREATE TABLE failed_jobs (
+    id BIGSERIAL PRIMARY KEY,
+    uuid VARCHAR(255) UNIQUE NOT NULL,
+    connection TEXT NOT NULL,
+    queue TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    exception TEXT NOT NULL,
+    failed_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Session storage
+CREATE TABLE sessions (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id BIGINT NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent TEXT NULL,
+    payload TEXT NOT NULL,
+    last_activity INTEGER NOT NULL
+);
+```
+
+## Migration History
+
+All migrations are tracked in the `migrations` table:
+
+| Migration File | Description |
+|----------------|-------------|
+| `0001_01_01_000000_create_users_table.php` | Initial users table |
+| `0001_01_01_000001_create_cache_table.php` | Cache table |
+| `0001_01_01_000002_create_jobs_table.php` | Queue jobs table |
+| `2025_08_26_100418_add_two_factor_columns_to_users_table.php` | 2FA support |
+| `2025_12_15_110021_create_pisua.php` | Apartments table |
+| `2025_12_22_103348_add_mota_odoo_users.php` | Add role and Odoo fields |
+| `2025_12_23_092119_add_user_pisua.php` | Add creator FK to pisua |
+| `2026_01_12_080053_create_zeregina_table.php` | Tasks table |
+| `2026_01_12_080848_create_zeregina_egin_table.php` | Task assignments pivot |
+| `2026_01_14_075802_add_egoera_to_zereginak_table.php` | Add status field |
+| `2026_01_20_104543_create_gastos_table.php` | Expenses table |
+| `2026_01_20_112602_create_piso_user_table.php` | User-apartment pivot |
+| `2026_01_21_083712_delete_mota_users.php` | Remove deprecated field |
+| `2026_01_29_121230_add_odoo_fields_to_gastos.php` | Add sync fields |
+| `2026_02_03_091544_create_ordainketas_table.php` | Payments table |
+| `2026_02_03_113906_add_fecha_salida_to_piso_user_table.php` | Add exit date |
+| `2026_02_04_072810_add_odoo_fields_to_zereginak.php` | Add task sync fields |
+
+## Odoo Synchronization Pattern
+
+### Sync Fields
+
+Every table synced with Odoo includes three fields:
+
+```sql
+odoo_id BIGINT NULL,          -- Foreign key to Odoo record
+synced BOOLEAN DEFAULT FALSE, -- Sync status flag
+sync_error TEXT NULL          -- Error message on failure
+```
+
+### Sync Workflow
+
+1. **Record Creation in Laravel**
+   ```sql
+   INSERT INTO gastos (IdUsuario, IdPiso, Cantidad, Nombre, Fecha)
+   VALUES (1, 5, 45.50, 'Groceries', '2026-03-05');
+   -- odoo_id = NULL, synced = FALSE
+   ```
+
+2. **Queue Job Dispatched**
+   ```sql
+   INSERT INTO jobs (queue, payload, ...)
+   VALUES ('default', '{"job":"SyncGastoToOdoo","data":{"gasto_id":123}}', ...);
+   ```
+
+3. **Job Processes Sync**
+   - Calls Odoo XML-RPC API
+   - On success: Updates `odoo_id` and sets `synced = true`
+   - On failure: Sets `sync_error` with message
+
+4. **Query Sync Status**
+   ```sql
+   -- Find unsynced records
+   SELECT * FROM gastos WHERE synced = FALSE;
+   
+   -- Find failed syncs
+   SELECT * FROM gastos WHERE sync_error IS NOT NULL;
+   ```
+
+## Indexes and Performance
+
+### Primary Indexes
+
+All tables have primary key indexes automatically:
+- `users_pkey` on `users(id)`
+- `pisua_pkey` on `pisua(id)`
+- `gastos_pkey` on `gastos(IdGasto)`
+
+### Foreign Key Indexes
+
+```sql
+-- User relationships
+CREATE INDEX idx_pisua_user_id ON pisua(user_id);
+CREATE INDEX idx_piso_user_piso ON piso_user(piso_id);
+CREATE INDEX idx_piso_user_user ON piso_user(user_id);
+CREATE INDEX idx_gastos_usuario ON gastos(IdUsuario);
+CREATE INDEX idx_ordainketas_deudor ON ordainketas(deudor_id);
+CREATE INDEX idx_ordainketas_acreedor ON ordainketas(acreedor_id);
+
+-- Apartment relationships
+CREATE INDEX idx_gastos_piso ON gastos(IdPiso);
+CREATE INDEX idx_zereginak_pisua ON zereginak(pisua_id);
+CREATE INDEX idx_ordainketas_piso ON ordainketas(piso_id);
+
+-- Odoo sync indexes
+CREATE INDEX idx_users_odoo_id ON users(odoo_id);
+CREATE INDEX idx_pisua_odoo_id ON pisua(odoo_id);
+CREATE INDEX idx_gastos_odoo_id ON gastos(odoo_id);
+CREATE INDEX idx_zereginak_odoo_id ON zereginak(odoo_id);
+```
+
+### Query-Specific Indexes
+
+```sql
+-- Unique apartment join code
+CREATE UNIQUE INDEX idx_pisua_kodigoa ON pisua(kodigoa);
+
+-- Email uniqueness
+CREATE UNIQUE INDEX idx_users_email ON users(email);
+
+-- Date filtering on expenses
+CREATE INDEX idx_gastos_fecha ON gastos(Fecha);
+
+-- Task status filtering
+CREATE INDEX idx_zereginak_egoera ON zereginak(egoera);
+
+-- Task scheduling queries
+CREATE INDEX idx_egin_dates ON egin(hasiera_data, amaiera_data);
+
+-- Role-based queries
+CREATE INDEX idx_piso_user_mota ON piso_user(mota);
+```
+
+## Common Queries
+
+### Get User's Apartments with Role
+
+```sql
+SELECT 
+    p.id,
+    p.izena,
+    p.kodigoa,
+    pu.mota,
+    pu.created_at as joined_at
+FROM pisua p
+INNER JOIN piso_user pu ON p.id = pu.piso_id
+WHERE pu.user_id = 1
+ORDER BY pu.created_at DESC;
+```
+
+### Get Apartment Expenses for Month
+
+```sql
+SELECT 
+    g.IdGasto,
+    g.Nombre,
+    g.Cantidad,
+    g.Fecha,
+    u.name as paid_by
+FROM gastos g
+INNER JOIN users u ON g.IdUsuario = u.id
+WHERE g.IdPiso = 5
+  AND EXTRACT(YEAR FROM g.Fecha) = 2026
+  AND EXTRACT(MONTH FROM g.Fecha) = 3
+ORDER BY g.Fecha DESC;
+```
+
+### Calculate Apartment Debt Balance
+
+```sql
+WITH expense_totals AS (
+    -- Total expenses per user
+    SELECT 
+        IdUsuario as user_id,
+        SUM(Cantidad) as total_paid
+    FROM gastos
+    WHERE IdPiso = 5
+    GROUP BY IdUsuario
+),
+tenant_count AS (
+    -- Number of tenants
+    SELECT COUNT(*) as num_tenants
+    FROM piso_user
+    WHERE piso_id = 5
+),
+fair_share AS (
+    -- Each tenant's fair share
+    SELECT 
+        (SELECT SUM(Cantidad) FROM gastos WHERE IdPiso = 5) / num_tenants as share
+    FROM tenant_count
+),
+payments AS (
+    -- Payments made
+    SELECT 
+        deudor_id as user_id,
+        SUM(cantidad) as paid_out
+    FROM ordainketas
+    WHERE piso_id = 5
+    GROUP BY deudor_id
+)
+SELECT 
+    u.id,
+    u.name,
+    COALESCE(et.total_paid, 0) as expenses_paid,
+    fs.share as fair_share,
+    COALESCE(p.paid_out, 0) as settlements_paid,
+    (COALESCE(et.total_paid, 0) + COALESCE(p.paid_out, 0) - fs.share) as balance
+FROM users u
+CROSS JOIN fair_share fs
+LEFT JOIN expense_totals et ON u.id = et.user_id
+LEFT JOIN payments p ON u.id = p.user_id
+WHERE u.id IN (
+    SELECT user_id FROM piso_user WHERE piso_id = 5
+)
+ORDER BY balance DESC;
+```
+
+### Get Upcoming Tasks for User
+
+```sql
+SELECT 
+    z.id,
+    z.izena,
+    z.deskripzioa,
+    e.hasiera_data,
+    e.amaiera_data,
+    p.izena as apartment_name
+FROM zereginak z
+INNER JOIN egin e ON z.id = e.zereginak_id
+INNER JOIN pisua p ON z.pisua_id = p.id
+WHERE e.erabiltzailea_id = 1
+  AND e.hasiera_data >= NOW()
+ORDER BY e.hasiera_data ASC
+LIMIT 10;
+```
+
+## Data Integrity
+
+### Foreign Key Constraints
+
+All relationships use `ON DELETE CASCADE` to maintain referential integrity:
+
+```sql
+-- When user is deleted, cascade to:
+- piso_user (remove memberships)
+- gastos (remove their expenses)
+- egin (remove task assignments)
+- ordainketas (remove as debtor/creditor)
+
+-- When pisua is deleted, cascade to:
+- piso_user (remove all memberships)
+- gastos (remove all expenses)
+- zereginak (remove all tasks)
+- ordainketas (remove all payments)
+
+-- When zereginak is deleted, cascade to:
+- egin (remove all assignments)
+```
+
+### Unique Constraints
+
+```sql
+-- One email per user
+ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);
+
+-- One join code per apartment
+ALTER TABLE pisua ADD CONSTRAINT pisua_kodigoa_unique UNIQUE (kodigoa);
+
+-- User can only join apartment once
+ALTER TABLE piso_user ADD CONSTRAINT piso_user_unique UNIQUE (piso_id, user_id);
+```
+
+### Check Constraints (Future)
+
+```sql
+-- Expense amount must be positive
+ALTER TABLE gastos ADD CONSTRAINT gastos_cantidad_positive 
+CHECK (Cantidad > 0);
+
+-- Payment amount must be positive
+ALTER TABLE ordainketas ADD CONSTRAINT ordainketas_cantidad_positive 
+CHECK (cantidad > 0);
+
+-- Task end date must be after start date
+ALTER TABLE egin ADD CONSTRAINT egin_dates_valid 
+CHECK (amaiera_data IS NULL OR amaiera_data > hasiera_data);
+```
+
+## Backup and Maintenance
+
+### Backup Strategy
+
+```bash
+# Full database backup
+pg_dump -U odoo -h postgres postgres > backup_$(date +%Y%m%d).sql
+
+# Backup specific tables
+pg_dump -U odoo -h postgres -t users -t pisua -t gastos postgres > backup_main.sql
+
+# Restore
+psql -U odoo -h postgres postgres < backup_20260305.sql
+```
+
+### Maintenance Queries
+
+```sql
+-- Find orphaned records (shouldn't exist with CASCADE)
+SELECT * FROM gastos WHERE IdPiso NOT IN (SELECT id FROM pisua);
+
+-- Find unsynced records older than 1 hour
+SELECT * FROM gastos 
+WHERE synced = FALSE 
+  AND created_at < NOW() - INTERVAL '1 hour';
+
+-- Retry failed syncs
+UPDATE gastos 
+SET synced = FALSE, sync_error = NULL 
+WHERE sync_error IS NOT NULL;
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Laravel Backend" icon="server" href="/architecture/laravel-backend">
+    See how Laravel models interact with this schema
+  </Card>
+  
+  <Card title="Odoo Integration" icon="link" href="/architecture/odoo-integration">
+    Learn about Odoo sync fields and strategy
+  </Card>
+  
+  <Card title="Architecture Overview" icon="sitemap" href="/architecture/overview">
+    Understand how database fits into overall system
+  </Card>
+</CardGroup>

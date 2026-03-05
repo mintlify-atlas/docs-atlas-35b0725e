@@ -1,0 +1,663 @@
+---
+title: 'Troubleshooting'
+description: 'Common deployment issues and solutions'
+---
+
+## Overview
+
+This guide addresses common issues encountered when deploying and running 7POINTS.NET, based on real-world problems documented in the project README.
+
+## PHP Version Issues
+
+### Problem: Outdated PHP Version
+
+Laravel 10+ requires PHP 8.2 or higher. Older versions will cause compatibility issues.
+
+#### Symptoms
+
+```bash
+Your requirements could not be resolved to an installable set of packages.
+Problem 1
+  - laravel/framework requires php ^8.2 but your PHP version (7.4) does not satisfy that requirement.
+```
+
+#### Solution
+
+<Tabs>
+  <Tab title="Windows (PowerShell)">
+    <Steps>
+      <Step title="Check current PHP version">
+        ```powershell
+        php -v
+        ```
+      </Step>
+
+      <Step title="Check C:\ for old PHP versions">
+        Navigate to `C:\` and look for folders like `php4.3`, `php5.4`, or `php7.4`. Delete outdated versions:
+        ```powershell
+        Remove-Item -Recurse -Force "C:\php74"
+        ```
+      </Step>
+
+      <Step title="Download and install PHP 8.2">
+        ```powershell
+        Invoke-WebRequest -Uri "https://windows.php.net/downloads/releases/archives/php-8.2-Win32-vs16-x64.zip" -OutFile "$env:USERPROFILE\Downloads\php82.zip"
+        New-Item -ItemType Directory -Path "C:\php82" -Force
+        Expand-Archive -Path "$env:USERPROFILE\Downloads\php82.zip" -DestinationPath "C:\php82"
+        ```
+      </Step>
+
+      <Step title="Add PHP to PATH">
+        ```powershell
+        [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\php82", [EnvironmentVariableTarget]::Machine)
+        ```
+      </Step>
+
+      <Step title="Configure PHP for Laravel">
+        ```powershell
+        Copy-Item "C:\php82\php.ini-development" "C:\php82\php.ini"
+        notepad C:\php82\php.ini
+        ```
+        
+        Uncomment these extensions (remove `;`):
+        ```ini
+        extension=curl
+        extension=mbstring
+        extension=bcmath
+        extension=xml
+        extension=mysqli
+        extension=openssl
+        extension=pdo_mysql
+        extension=fileinfo
+        ```
+      </Step>
+
+      <Step title="Verify installation">
+        ```powershell
+        php -v
+        # Should show PHP 8.2.x
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Docker (Recommended)">
+    Use Docker to avoid PHP version conflicts:
+    
+    ```bash
+    # PHP version is managed by Docker
+    docker-compose up -d
+    docker-compose exec laravel_app php -v
+    # PHP 8.2.x (cli) (built: ...)
+    ```
+    
+    No manual PHP installation required!
+  </Tab>
+</Tabs>
+
+<Warning>
+  After changing PHP versions, restart your terminal or IDE to reload the PATH.
+</Warning>
+
+## Composer Problems
+
+### Problem: Wrong Composer Version
+
+Laravel requires Composer 2.x. Version 1.x will cause dependency resolution issues.
+
+#### Check Composer Version
+
+```bash
+composer -V
+# Should show: Composer version 2.x.x
+```
+
+#### Solution: Install/Update Composer
+
+<Tabs>
+  <Tab title="Windows">
+    ```powershell
+    # Remove old Composer
+    Remove-Item -Recurse -Force "C:\ProgramData\ComposerSetup" -ErrorAction SilentlyContinue
+    
+    # Install Composer 2.x
+    Invoke-WebRequest -Uri "https://getcomposer.org/installer" -OutFile "$env:USERPROFILE\Downloads\composer-setup.php"
+    php "$env:USERPROFILE\Downloads\composer-setup.php" --install-dir=C:\php82 --filename=composer
+    
+    # Verify
+    composer -V
+    ```
+  </Tab>
+
+  <Tab title="Linux/macOS">
+    ```bash
+    # Update Composer
+    composer self-update
+    
+    # Or reinstall
+    php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+    php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+    php -r "unlink('composer-setup.php');"
+    ```
+  </Tab>
+
+  <Tab title="Docker">
+    ```bash
+    # Composer is pre-installed in the Docker image
+    docker-compose exec laravel_app composer --version
+    ```
+  </Tab>
+</Tabs>
+
+### Problem: Composer Memory Limit
+
+```bash
+Fatal error: Allowed memory size of 1610612736 bytes exhausted
+```
+
+#### Solution
+
+```bash
+# Increase memory limit temporarily
+php -d memory_limit=-1 /usr/local/bin/composer install
+
+# Or set in php.ini
+memory_limit = 512M
+```
+
+## Node.js and NPM Issues
+
+### Problem: Wrong Node.js Version
+
+7POINTS.NET requires Node.js 18 for frontend asset compilation.
+
+#### Check Versions
+
+```bash
+node -v    # Should be v18.x.x
+npm -v     # Should be 10.x.x
+```
+
+#### Solution: Install Node.js 18
+
+<Tabs>
+  <Tab title="Windows">
+    ```powershell
+    # Check if Node is installed
+    node -v
+    
+    # Remove old version
+    Remove-Item -Recurse -Force "C:\nodejs" -ErrorAction SilentlyContinue
+    
+    # Download Node.js 18 LTS from nodejs.org
+    # Or install with winget:
+    winget install -e --id OpenJS.NodeJS.LTS
+    
+    # Verify
+    node -v
+    npm -v
+    ```
+  </Tab>
+
+  <Tab title="Linux (using nvm)">
+    ```bash
+    # Install nvm
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+    
+    # Install Node.js 18
+    nvm install 18
+    nvm use 18
+    
+    # Verify
+    node -v
+    npm -v
+    ```
+  </Tab>
+
+  <Tab title="Docker">
+    Frontend compilation should be done on the host machine, not in Docker:
+    
+    ```bash
+    # On host machine
+    cd laravel
+    npm install
+    npm run build
+    ```
+  </Tab>
+</Tabs>
+
+### Problem: NPM Install Fails
+
+```bash
+npm ERR! code EACCES
+npm ERR! syscall access
+npm ERR! path /usr/local/lib/node_modules
+```
+
+#### Solution
+
+```bash
+# Fix permissions
+sudo chown -R $(whoami) ~/.npm
+sudo chown -R $(whoami) /usr/local/lib/node_modules
+
+# Or use npx instead
+npx install
+
+# Clean cache if needed
+npm cache clean --force
+rm -rf node_modules package-lock.json
+npm install
+```
+
+## Docker Connection Problems
+
+### Problem: Docker Not Running
+
+```bash
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock
+```
+
+#### Solution
+
+<Tabs>
+  <Tab title="Windows">
+    1. Open Docker Desktop
+    2. Wait for Docker to start (whale icon in system tray)
+    3. Verify:
+    ```powershell
+    docker --version
+    docker ps
+    ```
+  </Tab>
+
+  <Tab title="Linux">
+    ```bash
+    # Start Docker service
+    sudo systemctl start docker
+    
+    # Enable on boot
+    sudo systemctl enable docker
+    
+    # Add user to docker group (avoid sudo)
+    sudo usermod -aG docker $USER
+    newgrp docker
+    ```
+  </Tab>
+</Tabs>
+
+### Problem: Port Already in Use
+
+```bash
+ERROR: for laravel_app  Cannot start service laravel_app: 
+Ports are not available: exposing port TCP 0.0.0.0:8080 -> 0.0.0.0:0: 
+listen tcp 0.0.0.0:8080: bind: address already in use
+```
+
+#### Solution
+
+<Tabs>
+  <Tab title="Find and Kill Process">
+    ```bash
+    # Windows
+    netstat -ano | findstr :8080
+    taskkill /PID <PID> /F
+    
+    # Linux/macOS
+    lsof -ti:8080
+    kill -9 $(lsof -ti:8080)
+    ```
+  </Tab>
+
+  <Tab title="Change Port">
+    Edit `docker-compose.yaml`:
+    ```yaml
+    laravel_app:
+      ports:
+        - "8081:8080"  # Changed from 8080:8080
+    ```
+    
+    Then update `APP_URL` in `.env`:
+    ```env
+    APP_URL=http://localhost:8081
+    ```
+  </Tab>
+</Tabs>
+
+### Problem: WSL 2 Not Enabled (Windows)
+
+```bash
+Docker Desktop requires Windows Subsystem for Linux 2 (WSL 2)
+```
+
+#### Solution
+
+```powershell
+# Run as Administrator
+wsl --install
+
+# Or enable manually
+dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+
+# Download and install WSL 2 kernel update
+# https://aka.ms/wsl2kernel
+
+# Set WSL 2 as default
+wsl --set-default-version 2
+
+# Restart computer
+```
+
+## Database Connection Errors
+
+### Problem: Connection Refused
+
+```bash
+Illuminate\Database\QueryException
+SQLSTATE[08006] [7] connection to server at "postgres" (172.18.0.3), 
+port 5432 failed: Connection refused
+```
+
+#### Solution
+
+<Steps>
+  <Step title="Verify PostgreSQL is running">
+    ```bash
+    docker-compose ps postgres
+    # Should show "Up"
+    ```
+  </Step>
+
+  <Step title="Check database credentials">
+    Ensure `.env` matches `docker-compose.yaml`:
+    
+    ```env .env
+    DB_HOST=postgres    # NOT localhost when in Docker
+    DB_PORT=5432
+    DB_DATABASE=postgres
+    DB_USERNAME=odoo
+    DB_PASSWORD=myodoo
+    ```
+  </Step>
+
+  <Step title="Test connection">
+    ```bash
+    docker-compose exec laravel_app php artisan db:show
+    ```
+  </Step>
+
+  <Step title="Check PostgreSQL logs">
+    ```bash
+    docker-compose logs postgres
+    ```
+  </Step>
+</Steps>
+
+### Problem: Database Does Not Exist
+
+```bash
+SQLSTATE[08006] [7] FATAL: database "laravel" does not exist
+```
+
+#### Solution
+
+```bash
+# Create database
+docker-compose exec postgres createdb -U odoo laravel
+
+# Or update .env to use existing database
+DB_DATABASE=postgres
+```
+
+## Odoo Integration Issues
+
+### Problem: Cannot Connect to Odoo
+
+```bash
+Connection refused when connecting to http://localhost:8069
+```
+
+#### Solution
+
+<Steps>
+  <Step title="Check Odoo is running">
+    ```bash
+    docker-compose ps odoo
+    # Should show "Up"
+    
+    docker-compose logs odoo
+    ```
+  </Step>
+
+  <Step title="Verify Odoo URL in Laravel">
+    From Laravel container, use container name:
+    ```env .env
+    ODOO_URL=http://odoo:8069    # NOT localhost
+    ```
+    
+    From host machine (browser):
+    ```
+    http://localhost:8069
+    ```
+  </Step>
+
+  <Step title="Wait for Odoo to initialize">
+    Odoo takes 30-60 seconds to start on first run:
+    ```bash
+    docker-compose logs -f odoo
+    # Wait for: "odoo.service.server: HTTP service (werkzeug) running on 0.0.0.0:8069"
+    ```
+  </Step>
+</Steps>
+
+### Problem: Odoo Database Not Configured
+
+On first access, Odoo shows database creation page.
+
+#### Solution
+
+1. Navigate to http://localhost:8069
+2. Create database:
+   - **Master Password**: Set strong password (save it!)
+   - **Database Name**: `odoo_production`
+   - **Email**: Admin email
+   - **Password**: Admin password
+   - **Language**: Select language
+3. Install "Expenses" module for flatmate expense tracking
+
+## Permission Problems
+
+### Problem: Laravel Storage Not Writable
+
+```bash
+The stream or file "storage/logs/laravel.log" could not be opened: 
+failed to open stream: Permission denied
+```
+
+#### Solution
+
+```bash
+# Set correct permissions
+cd laravel
+chmod -R 775 storage bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache
+
+# Or in Docker
+docker-compose exec laravel_app chmod -R 775 storage bootstrap/cache
+```
+
+### Problem: Cannot Write to Database Volume
+
+```bash
+PERMISSION DENIED: could not create file "base/16384/2619"
+```
+
+#### Solution
+
+```bash
+# Reset PostgreSQL volume
+docker-compose down
+docker volume rm <project>_postgres_data
+docker-compose up -d postgres
+```
+
+<Warning>
+  This will delete all database data. Backup first!
+</Warning>
+
+## Git and GitHub Issues
+
+### Problem: Repository Branches Messy
+
+As mentioned in the README, the team had to recreate the repository due to branch confusion.
+
+#### Prevention
+
+<Steps>
+  <Step title="Use a clear branching strategy">
+    ```bash
+    main          # Production
+    ├── dev       # Development
+    │   ├── feature/user-auth
+    │   ├── feature/expense-tracking
+    │   └── bugfix/login-issue
+    ```
+  </Step>
+
+  <Step title="Always pull before pushing">
+    ```bash
+    git pull origin dev
+    git push origin dev
+    ```
+  </Step>
+
+  <Step title="Use pull requests">
+    Never push directly to `main` or `dev`:
+    ```bash
+    git checkout -b feature/my-feature
+    # Make changes
+    git add .
+    git commit -m "Add my feature"
+    git push origin feature/my-feature
+    # Create PR on GitHub
+    ```
+  </Step>
+</Steps>
+
+## VSCode Integration Issues
+
+### Problem: PHP IntelliSense Not Working
+
+#### Solution
+
+1. Install PHP IntelliSense extension
+2. Configure PHP path:
+   ```json settings.json
+   {
+     "php.validate.executablePath": "C:\\php82\\php.exe",
+     "php.suggest.basic": false
+   }
+   ```
+
+### Problem: Docker Extension Not Connecting
+
+#### Solution
+
+1. Install Docker extension
+2. Ensure Docker Desktop is running
+3. Restart VSCode
+4. Verify connection in Docker pane
+
+## General Debugging Tips
+
+### Enable Detailed Error Messages
+
+```env .env
+APP_DEBUG=true
+LOG_LEVEL=debug
+```
+
+### Clear All Caches
+
+```bash
+# Laravel caches
+php artisan cache:clear
+php artisan config:clear
+php artisan route:clear
+php artisan view:clear
+
+# Composer
+composer clear-cache
+
+# NPM
+npm cache clean --force
+```
+
+### Complete Reset
+
+<Warning>
+  This will delete all data!
+</Warning>
+
+```bash
+# Stop and remove everything
+docker-compose down -v
+
+# Remove Laravel caches
+cd laravel
+rm -rf vendor node_modules
+rm bootstrap/cache/*.php
+
+# Fresh start
+composer install
+npm install
+php artisan key:generate
+php artisan migrate:fresh --seed
+
+# Restart Docker
+docker-compose up -d
+```
+
+## Getting Help
+
+### Useful Resources
+
+- **Laravel Documentation**: https://laravel.com/docs
+- **Odoo Documentation**: https://www.odoo.com/documentation
+- **Docker Documentation**: https://docs.docker.com
+- **Stack Overflow**: Tag questions with `laravel`, `odoo`, `docker`
+- **Project README**: Detailed installation instructions
+
+### Checking System Status
+
+```bash
+# Verify all services
+docker-compose ps
+
+# Check service health
+docker-compose exec laravel_app php artisan about
+
+# Test database
+docker-compose exec laravel_app php artisan db:show
+
+# Check logs
+docker-compose logs --tail=50
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Review Docker configuration
+  </Card>
+  <Card title="Environment Config" icon="gear" href="/deployment/environment">
+    Double-check environment variables
+  </Card>
+  <Card title="Database Setup" icon="database" href="/deployment/database">
+    Verify database configuration
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/deployment/monitoring">
+    Set up monitoring and logging
+  </Card>
+</CardGroup>

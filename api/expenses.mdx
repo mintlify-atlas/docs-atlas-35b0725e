@@ -1,0 +1,459 @@
+---
+title: 'Expenses'
+description: 'Manage shared expenses (gastuak) in apartments'
+icon: 'receipt'
+---
+
+## Overview
+
+The Expenses API allows apartment members to track shared expenses, manage payments, and settle debts.
+
+<Note>
+All expense endpoints require authentication and an active apartment selected in session.
+</Note>
+
+## List Expenses
+
+Get all expenses for the current apartment with optional date filtering.
+
+```
+GET /gastuak
+```
+
+### Query Parameters
+
+<ParamField query="fecha" type="string">
+  Filter by date (format: `YYYY-MM` or `YYYY-MM-DD`)
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X GET "https://your-domain.com/gastuak?fecha=2026-03" \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response Example
+
+```json
+{
+  "piso": {
+    "id": 1,
+    "izena": "Downtown Apartment",
+    "kodigoa": "04823",
+    "inquilinos": [
+      {
+        "id": 5,
+        "name": "John Doe",
+        "email": "john@example.com"
+      }
+    ],
+    "gastos": [
+      {
+        "IdGasto": 1,
+        "IdUsuario": 5,
+        "IdPiso": 1,
+        "Nombre": "Groceries",
+        "Cantidad": "45.50",
+        "Fecha": "2026-03-01",
+        "odoo_id": 789,
+        "synced": true,
+        "created_at": "2026-03-01T14:30:00.000000Z",
+        "updated_at": "2026-03-01T14:30:00.000000Z",
+        "usuario": {
+          "id": 5,
+          "name": "John Doe",
+          "email": "john@example.com"
+        }
+      }
+    ],
+    "ordainketak": []
+  },
+  "filters": {
+    "fecha": "2026-03"
+  }
+}
+```
+
+<ResponseField name="piso" type="object">
+  Current apartment with expenses
+</ResponseField>
+
+<ResponseField name="piso.gastos" type="array">
+  Array of expense objects, ordered by date (most recent first)
+</ResponseField>
+
+<ResponseField name="piso.gastos[].IdGasto" type="integer">
+  Expense ID
+</ResponseField>
+
+<ResponseField name="piso.gastos[].Nombre" type="string">
+  Expense name/description
+</ResponseField>
+
+<ResponseField name="piso.gastos[].Cantidad" type="decimal">
+  Expense amount
+</ResponseField>
+
+<ResponseField name="piso.gastos[].Fecha" type="date">
+  Expense date
+</ResponseField>
+
+<ResponseField name="piso.gastos[].IdUsuario" type="integer">
+  ID of user who paid
+</ResponseField>
+
+<ResponseField name="piso.gastos[].usuario" type="object">
+  User who paid for the expense
+</ResponseField>
+
+<ResponseField name="piso.ordainketak" type="array">
+  Array of payment/settlement objects
+</ResponseField>
+
+---
+
+## Add Expense
+
+Create a new expense in the current apartment.
+
+```
+POST /gastuak/addGastua
+```
+
+### Request Parameters
+
+<ParamField path="Nombre" type="string" required>
+  Expense name/description (max 255 characters)
+</ParamField>
+
+<ParamField path="Cantidad" type="number" required>
+  Expense amount (must be >= 0)
+</ParamField>
+
+<ParamField path="Fecha" type="date" required>
+  Expense date (format: YYYY-MM-DD)
+</ParamField>
+
+<ParamField path="IdUsuario" type="integer" required>
+  ID of user who paid for the expense
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X POST https://your-domain.com/gastuak/addGastua \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  -d '{
+    "Nombre": "Electricity Bill",
+    "Cantidad": 85.50,
+    "Fecha": "2026-03-05",
+    "IdUsuario": 5
+  }'
+```
+
+### Response
+
+Redirects to `/gastuak` (expense list).
+
+<ResponseField name="IdGasto" type="integer">
+  Auto-generated expense ID
+</ResponseField>
+
+<ResponseField name="IdPiso" type="integer">
+  Automatically set from session
+</ResponseField>
+
+<ResponseField name="odoo_id" type="integer" nullable>
+  Odoo ERP integration ID (synced asynchronously)
+</ResponseField>
+
+---
+
+## Get Expenses by Apartment and User
+
+Retrieve expenses filtered by apartment and user.
+
+```
+GET /gastos/{idPisua}/{idErabiltzailea}
+```
+
+### Path Parameters
+
+<ParamField path="idPisua" type="integer" required>
+  Apartment ID
+</ParamField>
+
+<ParamField path="idErabiltzailea" type="integer" required>
+  User ID
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/gastos/1/5 \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Same structure as List Expenses, filtered by user.
+
+---
+
+## Get Expense for Editing
+
+Retrieve expense details for editing.
+
+```
+GET /gastuak/{idGasto}/edit
+```
+
+### Path Parameters
+
+<ParamField path="idGasto" type="integer" required>
+  Expense ID
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/gastuak/1/edit \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response Example
+
+```json
+{
+  "gasto": {
+    "IdGasto": 1,
+    "IdUsuario": 5,
+    "IdPiso": 1,
+    "Nombre": "Groceries",
+    "Cantidad": "45.50",
+    "Fecha": "2026-03-01"
+  },
+  "usuarios": [
+    {
+      "id": 5,
+      "name": "John Doe",
+      "email": "john@example.com"
+    },
+    {
+      "id": 7,
+      "name": "Jane Smith",
+      "email": "jane@example.com"
+    }
+  ]
+}
+```
+
+<ResponseField name="gasto" type="object">
+  Expense object to edit
+</ResponseField>
+
+<ResponseField name="usuarios" type="array">
+  List of apartment members (for user selection)
+</ResponseField>
+
+---
+
+## Update Expense
+
+Update an existing expense.
+
+```
+PUT /gastuak/editar/{id}
+```
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Expense ID
+</ParamField>
+
+### Request Parameters
+
+<ParamField path="Nombre" type="string" required>
+  Updated expense name (max 255 characters)
+</ParamField>
+
+<ParamField path="Cantidad" type="number" required>
+  Updated amount (must be >= 0)
+</ParamField>
+
+<ParamField path="Fecha" type="date" required>
+  Updated date (format: YYYY-MM-DD)
+</ParamField>
+
+<ParamField path="IdUsuario" type="integer" required>
+  Updated user ID (must exist in users table)
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X PUT https://your-domain.com/gastuak/editar/1 \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  -d '{
+    "Nombre": "Updated Groceries",
+    "Cantidad": 50.00,
+    "Fecha": "2026-03-02",
+    "IdUsuario": 5
+  }'
+```
+
+### Response
+
+Redirects to `/gastuak` (expense list).
+
+---
+
+## Delete Expense
+
+Delete an expense permanently.
+
+```
+DELETE /gastos/deleteGasto/{id}
+```
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Expense ID to delete
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X DELETE https://your-domain.com/gastos/deleteGasto/1 \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Redirects to `/gastuak` (expense list).
+
+<Info>
+If the expense was synced to Odoo, deletion will be propagated asynchronously.
+</Info>
+
+---
+
+## Settle Debt
+
+Record a payment to settle debt between apartment members.
+
+```
+POST /pagos/saldar
+```
+
+### Request Parameters
+
+<ParamField path="deudor_id" type="integer" required>
+  ID of user who owes money (must exist in users table)
+</ParamField>
+
+<ParamField path="acreedor_id" type="integer" required>
+  ID of user who is owed money (must exist in users table)
+</ParamField>
+
+<ParamField path="cantidad" type="number" required>
+  Payment amount (must be >= 0.01)
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X POST https://your-domain.com/pagos/saldar \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  -d '{
+    "deudor_id": 7,
+    "acreedor_id": 5,
+    "cantidad": 25.00
+  }'
+```
+
+### Response
+
+Redirects back to previous page.
+
+<ResponseField name="piso_id" type="integer">
+  Automatically set from session
+</ResponseField>
+
+<ResponseField name="deudor_id" type="integer">
+  Debtor user ID
+</ResponseField>
+
+<ResponseField name="acreedor_id" type="integer">
+  Creditor user ID
+</ResponseField>
+
+<ResponseField name="cantidad" type="decimal">
+  Payment amount
+</ResponseField>
+
+## Data Models
+
+### Gasto (Expense)
+
+```json
+{
+  "IdGasto": 1,
+  "IdUsuario": 5,
+  "IdPiso": 1,
+  "Nombre": "Expense name",
+  "Cantidad": "45.50",
+  "Fecha": "2026-03-01",
+  "odoo_id": 789,
+  "synced": true,
+  "sync_error": null,
+  "created_at": "2026-03-01T14:30:00.000000Z",
+  "updated_at": "2026-03-01T14:30:00.000000Z"
+}
+```
+
+### Ordainketa (Payment)
+
+```json
+{
+  "id": 1,
+  "piso_id": 1,
+  "deudor_id": 7,
+  "acreedor_id": 5,
+  "cantidad": "25.00",
+  "created_at": "2026-03-05T10:15:00.000000Z",
+  "updated_at": "2026-03-05T10:15:00.000000Z"
+}
+```
+
+## Error Responses
+
+**422 Validation Error:**
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "Cantidad": ["The Cantidad field must be at least 0."]
+  }
+}
+```
+
+**404 Not Found:**
+```json
+{
+  "message": "No query results for model [App\\Models\\Gasto] 999"
+}
+```

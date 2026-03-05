@@ -1,0 +1,680 @@
+---
+title: Laravel Backend Architecture
+description: Deep dive into the Laravel backend structure and implementation
+---
+
+The Laravel backend serves as the application layer, handling business logic, authentication, database operations, and acting as a gateway to Odoo ERP.
+
+## Directory Structure
+
+```
+laravel/
+├── app/
+│   ├── Actions/Fortify/          # Authentication actions
+│   │   ├── CreateNewUser.php
+│   │   ├── ResetUserPassword.php
+│   │   └── PasswordValidationRules.php
+│   ├── Console/Commands/         # Artisan commands
+│   │   └── ImportZereginakFromOdoo.php
+│   ├── Http/
+│   │   ├── Controllers/          # Request handlers
+│   │   │   ├── PisoController.php
+│   │   │   ├── GastoController.php
+│   │   │   ├── ZereginakController.php
+│   │   │   ├── DashboadController.php
+│   │   │   └── Settings/
+│   │   ├── Middleware/           # Request/response filters
+│   │   │   ├── HandleInertiaRequests.php
+│   │   │   └── HandleAppearance.php
+│   │   ├── Requests/             # Form validation
+│   │   └── Responses/            # Custom responses
+│   ├── Jobs/                     # Async queue jobs
+│   │   ├── SyncPisoToOdoo.php
+│   │   ├── SyncGastoToOdoo.php
+│   │   ├── SyncZereginakToOdoo.php
+│   │   └── SyncDeleteGastoFromOdoo.php
+│   ├── Models/                   # Eloquent ORM models
+│   │   ├── User.php
+│   │   ├── Piso.php
+│   │   ├── Gasto.php
+│   │   ├── Zereginak.php
+│   │   └── Ordainketa.php
+│   ├── Policies/                 # Authorization policies
+│   └── Services/                 # Business logic services
+│       └── OdooService.php       # Odoo API wrapper
+├── database/
+│   ├── migrations/               # Schema definitions
+│   ├── factories/                # Test data factories
+│   └── seeders/                  # Database seeders
+├── resources/
+│   ├── js/                       # React frontend
+│   └── css/                      # Global styles
+├── routes/
+│   ├── web.php                   # Web routes
+│   └── settings.php              # Settings routes
+└── composer.json                 # PHP dependencies
+```
+
+## Core Models
+
+### User Model
+
+Manages user accounts with authentication and apartment relationships.
+
+```php title="app/Models/User.php"
+class User extends Authenticatable
+{
+    use HasFactory, Notifiable, TwoFactorAuthenticatable;
+
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'odoo_id',      // Odoo contact ID
+        'synced',       // Sync status
+        'sync_error'    // Sync error messages
+    ];
+
+    protected $hidden = [
+        'password',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'remember_token',
+    ];
+
+    // Many-to-many: User belongs to multiple apartments
+    public function pisuak() {
+        return $this->belongsToMany(Piso::class, 'piso_user', 'user_id', 'piso_id')
+            ->withPivot('mota')  // Role: 'koordinatzailea' or 'normala'
+            ->withTimestamps();
+    }
+}
+```
+
+**Key Features:**
+- Laravel Fortify integration for authentication
+- Two-factor authentication support
+- Odoo synchronization fields
+- Many-to-many relationship with apartments via `piso_user` pivot table
+
+### Piso Model (Apartment)
+
+Represents shared apartments with tenants and expenses.
+
+```php title="app/Models/Piso.php" {15-24}
+class Piso extends Model
+{
+    use HasFactory;
+
+    protected $table = 'pisua';
+
+    protected $fillable = [
+        'izena',        // Apartment name
+        'kodigoa',      // 5-digit join code
+        'odoo_id',      // Odoo project ID
+        'synced',
+        'sync_error',
+        'user_id',      // Creator ID
+    ];
+
+    // Creator relationship
+    public function user() {
+        return $this->belongsTo(User::class);
+    }
+
+    // Tenants (many-to-many)
+    public function inquilinos() {
+        return $this->belongsToMany(User::class, 'piso_user', 'piso_id', 'user_id')
+            ->withPivot('mota')  // 'koordinatzailea' or 'normala'
+            ->withTimestamps();
+    }
+
+    // Expenses relationship
+    public function gastos() {
+        return $this->hasMany(Gasto::class, 'IdPiso', 'id');
+    }
+
+    // Payments relationship
+    public function ordainketak() {
+        return $this->hasMany(Ordainketa::class);
+    }
+}
+```
+
+**Key Features:**
+- Unique 5-digit join code for inviting tenants
+- Coordinator role management via pivot table
+- One-to-many relationships with expenses and payments
+
+### Gasto Model (Expense)
+
+Tracks shared expenses with Odoo financial integration.
+
+```php title="app/Models/Gasto.php"
+class Gasto extends Model
+{
+    use HasFactory;
+
+    protected $table = 'gastos';
+    protected $primaryKey = 'IdGasto';
+
+    protected $fillable = [
+        'IdUsuario',    // User who paid
+        'IdPiso',       // Apartment
+        'Cantidad',     // Amount
+        'Nombre',       // Expense name/description
+        'Fecha',        // Date
+        'odoo_id',      // Odoo hr.expense ID
+        'synced',
+        'sync_error'
+    ];
+
+    protected $casts = [
+        'Cantidad' => 'decimal:2',
+        'Fecha' => 'date',
+    ];
+
+    public function usuario() {
+        return $this->belongsTo(User::class, 'IdUsuario');
+    }
+
+    public function piso() {
+        return $this->belongsTo(Piso::class, 'IdPiso');
+    }
+}
+```
+
+**Key Features:**
+- Foreign keys to User and Piso
+- Automatic type casting for decimal amounts and dates
+- Odoo synchronization for financial reporting
+
+### Zereginak Model (Tasks)
+
+Manages household tasks with assignments.
+
+```php title="app/Models/Zereginak.php"
+class Zereginak extends Model
+{
+    protected $table = 'zereginak';
+
+    protected $fillable = [
+        'izena',         // Task name
+        'deskripzioa',   // Description
+        'pisua_id',      // Apartment ID
+        'egoera',        // Status
+        'odoo_id',
+        'synced',
+        'sync_error'
+    ];
+
+    public function pisua(): BelongsTo {
+        return $this->belongsTo(Piso::class, 'pisua_id');
+    }
+
+    // Many-to-many: Tasks assigned to multiple users
+    public function erabiltzaileak(): BelongsToMany {
+        return $this->belongsToMany(User::class, 'egin', 'zereginak_id', 'erabiltzailea_id')
+            ->withPivot(['hasiera_data', 'amaiera_data'])  // Start/end dates
+            ->withTimestamps();
+    }
+}
+```
+
+### Ordainketa Model (Payments)
+
+Records debt settlements between tenants.
+
+```php title="app/Models/Ordainketa.php"
+class Ordainketa extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'piso_id',      // Apartment
+        'deudor_id',    // Debtor user ID
+        'acreedor_id',  // Creditor user ID
+        'cantidad'      // Amount paid
+    ];
+}
+```
+
+## Controllers
+
+### PisoController
+
+Handles apartment CRUD operations and member management.
+
+```php title="app/Http/Controllers/PisoController.php" {20-51}
+class PisoController extends Controller
+{
+    // Show apartment selection page
+    public function showSelection(Request $request) {
+        $hasPisos = $request->user()->pisuak()->exists();
+        return Inertia::render('pisua/aukeratu', [
+            'hasPisos' => $hasPisos
+        ]);
+    }
+
+    // Join apartment with code
+    public function join(Request $request) {
+        $validated = $request->validate([
+            'kodigoa' => 'required|string|exists:pisua,kodigoa',
+        ]);
+
+        $piso = Piso::where('kodigoa', $validated['kodigoa'])->first();
+
+        // Attach user as normal tenant
+        $request->user()->pisuak()->syncWithoutDetaching([
+            $piso->id => ['mota' => 'normala']
+        ]);
+
+        // Sync to Odoo asynchronously
+        SyncInquilinoToOdoo::dispatch($request->user(), $piso);
+
+        session(['pisua_id' => $piso->id]);
+        return redirect()->route('dashboard');
+    }
+
+    // Create new apartment
+    public function store(Request $request) {
+        $validate = $request->validate([
+            'pisuaren_izena' => 'required|string|max:255',
+        ]);
+
+        // Generate unique 5-digit code
+        do {
+            $kodigoa = str_pad(rand(0, 99999), 5, '0', STR_PAD_LEFT);
+        } while (Piso::where('kodigoa', $kodigoa)->exists());
+
+        $pisua = Piso::create([
+            'izena' => $validate['pisuaren_izena'],
+            'kodigoa' => $kodigoa,
+            'user_id' => $request->user()->id,
+        ]);
+
+        // Attach creator as coordinator
+        $pisua->inquilinos()->attach($request->user()->id, [
+            'mota' => 'koordinatzailea'
+        ]);
+
+        // Chain sync jobs: User → Piso → Inquilino
+        Bus::chain([
+            new SyncUserToOdoo($request->user()),
+            new SyncPisoToOdoo($pisua),
+            new SyncInquilinoToOdoo($request->user(), $pisua)
+        ])->dispatch();
+
+        return redirect()->route('dashboard');
+    }
+}
+```
+
+**Key Features:**
+- Unique join code generation
+- Role-based pivot table management
+- Laravel Bus for chained async jobs
+- Inertia.js for SPA responses
+
+### GastoController
+
+Manages expense tracking and debt calculations.
+
+```php title="app/Http/Controllers/GastoController.php" {17-57}
+class GastoController extends Controller
+{
+    public function index(Request $request) {
+        $pisuaId = session('pisua_id');
+        $fechaFiltro = $request->input('fecha'); // Format: "2025-01"
+
+        $piso = Piso::with([
+            'inquilinos',
+            'gastos' => function ($query) use ($fechaFiltro) {
+                $query->orderBy('Fecha', 'desc');
+                
+                if ($fechaFiltro) {
+                    $partes = explode('-', $fechaFiltro);
+                    if (count($partes) === 2) {
+                        $query->whereYear('Fecha', $partes[0])
+                              ->whereMonth('Fecha', $partes[1]);
+                    }
+                }
+            },
+            'gastos.usuario',
+            'ordainketak'
+        ])->find($pisuaId);
+
+        return Inertia::render('Gastuak/GastuakPage', [
+            'piso' => $piso,
+            'filters' => ['fecha' => $fechaFiltro]
+        ]);
+    }
+
+    public function addGasto(Request $request) {
+        $validated = $request->validate([
+            'Nombre' => 'required|string|max:255',
+            'Cantidad' => 'required|numeric|min:0',
+            'Fecha' => 'required|date',
+            'IdUsuario' => 'required|numeric',
+        ]);
+
+        $validated['IdPiso'] = session('pisua_id');
+        $gasto = Gasto::create($validated);
+
+        // Async sync to Odoo
+        SyncGastoToOdoo::dispatch($gasto);
+
+        return redirect('/gastuak');
+    }
+
+    // Settle debt between tenants
+    public function saldarDeuda(Request $request) {
+        $validated = $request->validate([
+            'deudor_id' => 'required|exists:users,id',
+            'acreedor_id' => 'required|exists:users,id',
+            'cantidad' => 'required|numeric|min:0.01',
+        ]);
+
+        Ordainketa::create([
+            'piso_id' => session('pisua_id'),
+            'deudor_id' => $validated['deudor_id'],
+            'acreedor_id' => $validated['acreedor_id'],
+            'cantidad' => $validated['cantidad'],
+        ]);
+
+        return redirect()->back();
+    }
+}
+```
+
+**Key Features:**
+- Month/year filtering for expenses
+- Eager loading relationships for performance
+- Payment settlement tracking
+- Session-based apartment context
+
+## Routes
+
+### Web Routes
+
+```php title="routes/web.php"
+use App\Http\Controllers\{PisoController, GastoController, ZereginakController};
+
+// Public route
+Route::get('/', fn() => Inertia::render('welcome'))->name('home');
+
+// Authenticated routes
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('dashboard', [DashboadController::class, 'index'])
+        ->name('dashboard');
+
+    // Apartment routes
+    Route::post('/pisua/{id}/aukeratu', [PisoController::class, 'selectPisua']);
+    Route::post('/pisua/batu', [PisoController::class, 'join']);
+    Route::get('/pisua/sortu', [PisoController::class, 'create']);
+    Route::post('/pisua', [PisoController::class, 'store']);
+    Route::get('/pisua/{pisua}/edit', [PisoController::class, 'edit']);
+    Route::put('/pisua/{pisua}', [PisoController::class, 'update']);
+    Route::delete('/pisua/{pisua}', [PisoController::class, 'destroy']);
+
+    // Expense routes
+    Route::get('/gastuak', [GastoController::class, 'index']);
+    Route::post('/gastuak/addGastua', [GastoController::class, 'addGasto']);
+    Route::delete('/gastos/deleteGasto/{id}', [GastoController::class, 'eliminarGasto']);
+    Route::put('/gastuak/editar/{id}', [GastoController::class, 'editGasto']);
+    Route::post('/pagos/saldar', [GastoController::class, 'saldarDeuda']);
+
+    // Task routes
+    Route::resource('zereginak', ZereginakController::class);
+});
+
+require __DIR__ . '/settings.php';
+```
+
+## Inertia.js Integration
+
+### Middleware Configuration
+
+```php title="app/Http/Middleware/HandleInertiaRequests.php"
+class HandleInertiaRequests extends Middleware
+{
+    public function share(Request $request): array
+    {
+        return array_merge(parent::share($request), [
+            'auth' => [
+                'user' => $request->user(),
+            ],
+            'flash' => [
+                'message' => fn() => $request->session()->get('message')
+            ],
+            'pisua' => [
+                'id' => session('pisua_id'),
+                'izena' => session('pisua_izena'),
+            ],
+        ]);
+    }
+}
+```
+
+**Shared Props:**
+- `auth.user` - Authenticated user object
+- `flash.message` - Session flash messages
+- `pisua` - Current apartment context
+
+### Controller Response Pattern
+
+```php
+// Render React component with props
+return Inertia::render('PageName', [
+    'propName' => $data
+]);
+
+// Redirect after form submission
+return redirect()->route('route.name');
+
+// Redirect back with validation errors
+return back()->withErrors(['field' => 'Error message']);
+```
+
+## Authentication with Laravel Fortify
+
+### Configuration
+
+```php title="config/fortify.php" (conceptual)
+Features::registration(),
+Features::resetPasswords(),
+Features::emailVerification(),
+Features::updateProfileInformation(),
+Features::updatePasswords(),
+Features::twoFactorAuthentication([
+    'confirmPassword' => true,
+]),
+```
+
+### Custom User Creation
+
+```php title="app/Actions/Fortify/CreateNewUser.php"
+class CreateNewUser implements CreatesNewUsers
+{
+    public function create(array $input): User
+    {
+        Validator::make($input, [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ])->validate();
+
+        return User::create([
+            'name' => $input['name'],
+            'email' => $input['email'],
+            'password' => Hash::make($input['password']),
+        ]);
+    }
+}
+```
+
+## Queue Jobs for Odoo Sync
+
+### Job Structure
+
+```php title="app/Jobs/SyncGastoToOdoo.php"
+class SyncGastoToOdoo implements ShouldQueue
+{
+    use Queueable;
+
+    protected $gasto;
+
+    public function __construct(Gasto $gasto) {
+        $this->gasto = $gasto;
+    }
+
+    public function handle(OdooService $odoo): void
+    {
+        try {
+            $this->gasto->load(['usuario', 'piso']);
+
+            // Ensure piso is synced first
+            if (!$this->gasto->piso->odoo_id) {
+                throw new Exception("Piso not synced to Odoo");
+            }
+
+            // Get or create Odoo contact for user
+            $partnerOdooId = $odoo->syncUserContact($this->gasto->usuario);
+
+            $data = [
+                'name' => $this->gasto->Nombre,
+                'date' => Carbon::parse($this->gasto->Fecha)->format('Y-m-d'),
+                'total_amount' => (float) $this->gasto->Cantidad,
+                'product_id' => 9,  // Category: Other expenses
+                'payment_mode' => 'own_account',
+                'pisua_id' => (int) $this->gasto->piso->odoo_id,
+                'partner_id' => (int) $partnerOdooId,
+            ];
+
+            if ($this->gasto->odoo_id) {
+                // Update existing
+                $odoo->write('hr.expense', [[$this->gasto->odoo_id], $data]);
+            } else {
+                // Create new
+                $odooGastoId = $odoo->create('hr.expense', $data);
+                $this->gasto->updateQuietly([
+                    'odoo_id' => $odooGastoId,
+                    'synced' => true,
+                ]);
+            }
+        } catch (Exception $e) {
+            $this->gasto->updateQuietly(['sync_error' => $e->getMessage()]);
+            throw $e;  // Re-throw for Laravel queue retry
+        }
+    }
+}
+```
+
+**Key Features:**
+- Implements `ShouldQueue` for async execution
+- Error handling with sync_error tracking
+- Dependency injection of `OdooService`
+- Conditional create vs. update logic
+
+### Dispatching Jobs
+
+```php
+// Single job
+SyncGastoToOdoo::dispatch($gasto);
+
+// Chained jobs (sequential execution)
+Bus::chain([
+    new SyncUserToOdoo($user),
+    new SyncPisoToOdoo($piso),
+    new SyncInquilinoToOdoo($user, $piso)
+])->dispatch();
+```
+
+## API Design Patterns
+
+### RESTful Resource Controllers
+
+```php
+Route::resource('zereginak', ZereginakController::class);
+
+// Generates:
+// GET    /zereginak           → index()
+// GET    /zereginak/sortu     → create()
+// POST   /zereginak           → store()
+// GET    /zereginak/{id}/editatu → edit()
+// PUT    /zereginak/{id}      → update()
+// DELETE /zereginak/{id}      → destroy()
+```
+
+### Response Patterns
+
+```php
+// Success response (Inertia)
+return Inertia::render('Page', ['data' => $data]);
+
+// Redirect with flash message
+return redirect()->route('dashboard')
+    ->with('message', 'Success!');
+
+// Validation errors
+return back()->withErrors([
+    'field' => 'Error message'
+]);
+
+// JSON response (for AJAX)
+return response()->json(['success' => true], 200);
+```
+
+## Database Migrations
+
+### Example Migration
+
+```php title="database/migrations/2026_01_20_104543_create_gastos_table.php"
+Schema::create('gastos', function (Blueprint $table) {
+    $table->id('IdGasto');
+    $table->unsignedBigInteger('IdUsuario');
+    $table->unsignedBigInteger('IdPiso');
+    $table->decimal('Cantidad', 10, 2);
+    $table->string('Nombre');
+    $table->date('Fecha');
+    $table->timestamps();
+
+    $table->foreign('IdUsuario')
+          ->references('id')->on('users')
+          ->onDelete('cascade');
+          
+    $table->foreign('IdPiso')
+          ->references('id')->on('pisua')
+          ->onDelete('cascade');
+});
+```
+
+## Testing
+
+### Test Configuration
+
+```json title="composer.json"
+"require-dev": {
+    "pestphp/pest": "^4.1",
+    "pestphp/pest-plugin-laravel": "^4.0",
+    "mockery/mockery": "^1.6"
+}
+```
+
+### Running Tests
+
+```bash
+php artisan test
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Database Schema" icon="database" href="/architecture/database-schema">
+    Complete database design and migrations
+  </Card>
+  
+  <Card title="Odoo Integration" icon="link" href="/architecture/odoo-integration">
+    Learn about Odoo sync jobs and API
+  </Card>
+</CardGroup>

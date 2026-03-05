@@ -1,0 +1,162 @@
+---
+title: 'Authentication'
+description: 'Learn how to authenticate with the 7POINTS.NET API using Laravel Fortify'
+icon: 'key'
+---
+
+## Overview
+
+7POINTS.NET uses Laravel Fortify for authentication, providing session-based authentication with CSRF protection. All API endpoints require authentication unless otherwise specified.
+
+## Authentication Flow
+
+### 1. CSRF Token
+
+Before making any authenticated requests, you must first obtain a CSRF token:
+
+```bash
+curl -X GET https://your-domain.com/sanctum/csrf-cookie \
+  -H "Accept: application/json" \
+  --cookie-jar cookies.txt \
+  --cookie cookies.txt
+```
+
+### 2. Login
+
+Authenticate with your credentials to establish a session.
+
+<ParamField path="email" type="string" required>
+  User's email address
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  User's password
+</ParamField>
+
+**Request Example:**
+
+```bash
+curl -X POST https://your-domain.com/login \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  --cookie-jar cookies.txt \
+  -d '{
+    "email": "user@example.com",
+    "password": "your-password"
+  }'
+```
+
+**Response Example:**
+
+```json
+{
+  "two_factor": false
+}
+```
+
+<ResponseField name="two_factor" type="boolean">
+  Indicates if two-factor authentication is required
+</ResponseField>
+
+### 3. Registration
+
+Create a new user account (if registration is enabled).
+
+<ParamField path="name" type="string" required>
+  User's full name
+</ParamField>
+
+<ParamField path="email" type="string" required>
+  User's email address
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  User's password (minimum 8 characters)
+</ParamField>
+
+<ParamField path="password_confirmation" type="string" required>
+  Password confirmation (must match password)
+</ParamField>
+
+**Request Example:**
+
+```bash
+curl -X POST https://your-domain.com/register \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  --cookie-jar cookies.txt \
+  -d '{
+    "name": "John Doe",
+    "email": "john@example.com",
+    "password": "securepassword123",
+    "password_confirmation": "securepassword123"
+  }'
+```
+
+**Response:**
+Redirects to dashboard on success.
+
+### 4. Logout
+
+End the current session.
+
+**Request Example:**
+
+```bash
+curl -X POST https://your-domain.com/logout \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+## Middleware Requirements
+
+All protected endpoints use the following middleware:
+
+- **auth**: Ensures user is authenticated
+- **verified**: Ensures user's email is verified
+
+## Session Management
+
+7POINTS.NET uses session-based authentication. After logging in:
+
+1. Store the session cookie returned by the server
+2. Include the cookie in all subsequent requests
+3. Include the CSRF token in request headers: `X-CSRF-TOKEN: {token}`
+
+## Error Responses
+
+**401 Unauthorized:**
+```json
+{
+  "message": "Unauthenticated."
+}
+```
+
+**403 Forbidden:**
+```json
+{
+  "message": "Your email address is not verified."
+}
+```
+
+**422 Validation Error:**
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "email": ["The email field is required."]
+  }
+}
+```
+
+## Best Practices
+
+- Always obtain a fresh CSRF token before authentication
+- Store session cookies securely
+- Implement proper error handling for authentication failures
+- Use HTTPS in production environments
+- Verify email addresses before granting full access

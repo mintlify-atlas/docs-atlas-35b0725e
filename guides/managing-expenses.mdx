@@ -1,0 +1,385 @@
+---
+title: 'Managing Expenses'
+description: 'Complete guide to tracking shared expenses, viewing debts, and settling payments'
+icon: 'money-bill-wave'
+---
+
+This comprehensive guide covers everything about managing shared expenses in 7POINTS.NET, from adding new expenses to settling debts between roommates.
+
+## Overview
+
+The expense management system (Gastuak) helps you:
+- Track who paid for shared expenses
+- Automatically calculate how much each person owes
+- View expense history by month
+- Settle debts between roommates
+- Keep a permanent record of all transactions
+
+<Info>
+All expenses are shared equally among apartment members. The system calculates debts automatically based on who paid and the total number of members.
+</Info>
+
+## Accessing Expense Management
+
+Navigate to **Gastuak** from the main navigation menu, or go directly to `/gastuak`.
+
+You must have an active apartment selected to view expenses.
+
+## Adding a New Expense
+
+<Steps>
+  <Step title="Navigate to Add Expense Form">
+    From the main Gastuak page:
+    1. Click the **"Gastu Berria"** (New Expense) button in the top right
+    2. Or navigate directly to `/gastuak/ikusi`
+    
+    You'll see a clean, card-style form.
+  </Step>
+
+  <Step title="Fill in Expense Details">
+    Complete the following fields:
+    
+    **Izenburua (Title/Description)**
+    - What was purchased or paid for
+    - Maximum 50 characters
+    - Character counter shows remaining space
+    - Examples: "Erosketa" (Groceries), "Internet Bill", "Cleaning Supplies"
+    
+    **Zenbatekoa (Amount in €)**
+    - How much was spent
+    - Accepts decimal values (e.g., 45.50)
+    - Maximum 6 digits total
+    - Currency is always in Euros (€)
+    - System prevents negative values and letters
+    
+    **Data (Date)**
+    - When the expense occurred
+    - Date picker format: YYYY-MM-DD
+    - Can be past, present, or future dates
+    - Defaults to today if not specified
+    
+    **Ordainduta (Paid By)**
+    - Select which roommate paid the expense
+    - Dropdown shows all apartment members
+    - Usually yourself, but can be anyone
+    
+    <Tip>
+    Use clear, descriptive titles so everyone understands what the expense was for. "Groceries - March Week 1" is better than just "Shopping".
+    </Tip>
+  </Step>
+
+  <Step title="Submit the Expense">
+    Click **"Sortu"** (Create) to save the expense.
+    
+    The system will:
+    - Validate all fields
+    - Save to the local database
+    - Queue synchronization with Odoo ERP
+    - Redirect you back to the main expense list
+    - Recalculate all debts automatically
+    
+    If you change your mind, click **"Utzi eta itzuli"** (Cancel and return).
+  </Step>
+</Steps>
+
+## Viewing Expense History
+
+### Main Expense View
+
+The Gastuak page has two tabs:
+
+<Tabs>
+  <Tab title="Gastuak (Expenses)">
+    Shows the complete list of all expenses:
+    
+    - **Default sorting**: Most recent first (by `Fecha` field)
+    - **Information displayed**:
+      - Expense title/description
+      - Amount in euros
+      - Who paid
+      - Date of expense
+    - **Actions available**:
+      - Edit expense (pencil icon)
+      - Delete expense (trash icon)
+    
+    Each expense is displayed in a card or list row format showing all key information at a glance.
+  </Tab>
+  
+  <Tab title="Zergak (Debts)">
+    Automatically calculates and displays who owes money to whom:
+    
+    - Shows net debts between all roommates
+    - Accounts for all expenses and previous settlements
+    - Updates in real-time as expenses are added
+    - Provides "Saldar" (Settle) buttons to record payments
+    
+    See [Understanding Debt Indicators](#understanding-debt-indicators) below.
+  </Tab>
+</Tabs>
+
+### Filtering by Date
+
+Use the date filter to view expenses from specific time periods:
+
+1. **Month Picker**: Located in the top left of the expense list
+2. **Format**: YYYY-MM (e.g., "2025-03" for March 2025)
+3. **Effect**: Filters expenses by year and month
+4. **Clear Filter**: Click the ✕ button to show all expenses
+
+<Note>
+Filtering only affects the display. All expenses remain in the database and are used for debt calculations.
+</Note>
+
+## Understanding Debt Indicators
+
+The **Zergak** (Debts) tab shows calculated balances:
+
+### How It Works
+
+1. **Equal Split**: All expenses are divided equally among apartment members
+2. **Balance Calculation**: 
+   - If you paid €60 for groceries in a 3-person apartment:
+     - Your share: €20
+     - Each roommate owes you: €20
+     - Your balance: +€40
+3. **Net Debts**: The system shows simplified, net debts between people
+4. **Previous Settlements**: Past payments are factored into current balances
+
+### Reading the Debts View
+
+You'll see entries like:
+
+<CodeGroup>
+```text Positive Balance
+Jon owes you: €25.00
+[Saldar] button
+```
+
+```text Negative Balance  
+You owe Maria: €15.50
+[Saldar] button
+```
+
+```text Settled
+No pending debts with Alex
+```
+</CodeGroup>
+
+<Info>
+**Green/positive numbers**: Others owe you money
+**Red/negative numbers**: You owe money to others
+**Zero**: All settled up
+</Info>
+
+## Settling Debts
+
+When someone pays back money they owe:
+
+<Steps>
+  <Step title="Navigate to Zergak Tab">
+    Click the **Zergak** tab on the Gastuak page to view current debts.
+  </Step>
+
+  <Step title="Find the Relevant Debt">
+    Locate the debt entry showing:
+    - Who the payment is between
+    - How much is owed
+    - The **Saldar** (Settle) button
+  </Step>
+
+  <Step title="Click Saldar">
+    When payment has been made in real life (cash, bank transfer, etc.):
+    1. Click the **Saldar** button
+    2. Confirm the payment amount
+    3. The system records this as an `Ordainketa` (payment)
+    
+    The debt balance is immediately updated to reflect the payment.
+  </Step>
+</Steps>
+
+<Warning>
+Settling a debt in 7POINTS.NET does NOT transfer money. It only records that a real-world payment has occurred. Make sure money has actually been exchanged before clicking Saldar.
+</Warning>
+
+### Payment Records
+
+Settlements are stored in the `ordainketak` table with:
+- Piso ID (which apartment)
+- Deudor ID (who owed money)
+- Acreedor ID (who was owed money)  
+- Cantidad (amount paid)
+- Timestamp
+
+These records are permanent and used in future debt calculations.
+
+## Editing Expenses
+
+<Steps>
+  <Step title="Locate the Expense">
+    Find the expense you want to edit in the Gastuak list.
+  </Step>
+
+  <Step title="Click Edit">
+    Click the pencil/edit icon next to the expense.
+    
+    You'll be taken to `/gastuak/{idGasto}/edit`.
+  </Step>
+
+  <Step title="Modify Fields">
+    You can change:
+    - Title/description
+    - Amount
+    - Date
+    - Who paid
+    
+    All the same validation rules apply as when creating.
+  </Step>
+
+  <Step title="Save Changes">
+    Click the save button to update the expense.
+    
+    The system will:
+    - Update the local database
+    - Re-sync with Odoo
+    - Recalculate all debts with the new values
+  </Step>
+</Steps>
+
+<Tip>
+Only edit expenses if there was a mistake in the original entry. For tracking additional costs, create a new expense instead.
+</Tip>
+
+## Deleting Expenses
+
+<Steps>
+  <Step title="Find the Expense">
+    Locate the expense in the Gastuak list.
+  </Step>
+
+  <Step title="Click Delete">
+    Click the trash/delete icon.
+    
+    A confirmation dialog will appear asking:
+    **"Ziur zaude gastu hau ezabatu nahi duzula?"** (Are you sure you want to delete this expense?)
+  </Step>
+
+  <Step title="Confirm Deletion">
+    Click OK/Confirm to permanently delete the expense.
+    
+    The system will:
+    - Remove it from the local database
+    - Queue deletion in Odoo (if it was synced)
+    - Recalculate all debts without this expense
+    - Redirect back to the main list
+  </Step>
+</Steps>
+
+<Warning>
+Deleting expenses is permanent and cannot be undone. The expense will be removed from all views and debt calculations. Only delete if the expense was entered in error.
+</Warning>
+
+## Best Practices for Shared Expenses
+
+<CardGroup cols={2}>
+  <Card title="Enter Expenses Promptly" icon="clock">
+    Add expenses as soon as they occur to avoid forgetting details and amounts.
+  </Card>
+  
+  <Card title="Be Specific in Descriptions" icon="pen">
+    Use clear titles like "Groceries - Week 12" instead of vague "Shopping" entries.
+  </Card>
+  
+  <Card title="Keep Receipts" icon="receipt">
+    Save physical or digital receipts for verification and disputes.
+  </Card>
+  
+  <Card title="Settle Regularly" icon="handshake">
+    Pay debts monthly or bi-weekly to avoid large accumulated amounts.
+  </Card>
+  
+  <Card title="Communicate About Large Expenses" icon="comments">
+    Discuss major purchases with roommates before adding to shared expenses.
+  </Card>
+  
+  <Card title="Review Monthly" icon="calendar-check">
+    Use the date filter to review each month's expenses and ensure accuracy.
+  </Card>
+</CardGroup>
+
+## Summary View
+
+At the bottom of the Gastuak page, you'll see summary statistics:
+
+<ResponseField name="Nire ekarpena" type="decimal">
+  Total amount YOU have paid for all expenses. This is your contribution to shared costs.
+</ResponseField>
+
+<ResponseField name="Guztira (Pisu osoa)" type="decimal">
+  Total of ALL expenses across the entire apartment. Shows complete spending.
+</ResponseField>
+
+These summaries update dynamically as expenses are added, edited, or deleted.
+
+## Common Questions
+
+<AccordionGroup>
+  <Accordion title="What if someone doesn't pay their share?">
+    7POINTS.NET tracks debts but doesn't enforce payment:
+    
+    1. The debt will show in the Zergak tab
+    2. Roommates can see who owes what
+    3. You'll need to handle collection in person
+    4. Only click Saldar when actually paid
+    
+    Consider setting apartment rules about payment deadlines.
+  </Accordion>
+  
+  <Accordion title="Can I add expenses for past months?">
+    Yes! You can:
+    - Set any date when creating an expense
+    - Add historical expenses retroactively
+    - Use the date filter to view old expenses
+    - All debts recalculate including historical entries
+    
+    This is useful for catching up on expenses you forgot to enter.
+  </Accordion>
+  
+  <Accordion title="What if expense amounts are unequal?">
+    Currently, the system assumes equal splits among all members.
+    
+    For unequal expenses:
+    - Enter the full amount with one person paying
+    - Handle the custom split manually outside the app
+    - Or enter multiple expenses to represent different shares
+    
+    Future versions may support custom split ratios.
+  </Accordion>
+  
+  <Accordion title="Can I export expense data?">
+    Export functionality is not currently built into the UI.
+    
+    Administrators with database access can:
+    - Query the `gastos` table directly
+    - Access Odoo ERP for synchronized records
+    - Generate custom reports via SQL
+  </Accordion>
+</AccordionGroup>
+
+## Technical Details
+
+### Key Routes
+- **View expenses**: `GET /gastuak` → `GastoController@index`
+- **Add expense form**: `GET /gastuak/ikusi` → `GastoController@gastuakGehituCargar`
+- **Create expense**: `POST /gastuak/addGastua` → `GastoController@addGasto`
+- **Edit form**: `GET /gastuak/{id}/edit` → `GastoController@cargarPaginaEditar`
+- **Update expense**: `PUT /gastuak/editar/{id}` → `GastoController@editGasto`
+- **Delete expense**: `DELETE /gastos/deleteGasto/{id}` → `GastoController@eliminarGasto`
+- **Settle debt**: `POST /pagos/saldar` → `GastoController@saldarDeuda`
+
+### Data Models
+- **Gasto**: Stores individual expenses with fields `Nombre`, `Cantidad`, `Fecha`, `IdUsuario`, `IdPiso`
+- **Ordainketa**: Stores debt settlements with fields `deudor_id`, `acreedor_id`, `cantidad`, `piso_id`
+- **Relationships**: Expenses belong to a Piso and a User (who paid)
+
+### Controller Location
+`app/Http/Controllers/GastoController.php` (lines 1-177)

@@ -1,80 +1,473 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart Guide
+description: Get started with 7POINTS.NET in minutes. Create your apartment, add expenses, and manage tasks.
 ---
 
-## Get started in three steps
+Welcome to **7POINTS.NET (Pisukide)**! This quickstart guide will help you go from zero to managing your first shared apartment in minutes.
 
-Get your documentation site running locally and make your first customization.
+## What You'll Accomplish
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+By the end of this guide, you will:
+- Create your user account
+- Create or join an apartment
+- Add your first expense
+- View your personalized dashboard
+- Understand the core features
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  7POINTS.NET is designed specifically for university students sharing apartments. It helps manage household tasks, expenses, and coordination effortlessly.
 </Note>
+
+## Prerequisites
+
+Before starting, make sure you have:
+- A valid email address
+- Access to the 7POINTS.NET web application
+- (Optional) An apartment code if joining an existing apartment
+
+---
+
+<Steps>
+
+### Step 1: Create Your Account
+
+Navigate to the registration page and create your account.
+
+**Registration Form Fields:**
+- **Name (Izena)**: Your full name
+- **Email**: Your email address
+- **Password (Pasahitza)**: Choose a secure password
+- **Confirm Password**: Re-enter your password
+
+<CodeGroup>
+```tsx Registration Component
+// From: resources/js/pages/auth/register.tsx
+<Form {...store.form()} resetOnSuccess={['password', 'password_confirmation']}>
+  <div className="grid gap-6">
+    <div className="grid gap-2">
+      <Label htmlFor="name">Izena</Label>
+      <Input
+        id="name"
+        type="text"
+        required
+        name="name"
+        placeholder="Zure izena"
+      />
+    </div>
+    <div className="grid gap-2">
+      <Label htmlFor="email">Email helbidea</Label>
+      <Input
+        id="email"
+        type="email"
+        required
+        name="email"
+        placeholder="zure@emaila.com"
+      />
+    </div>
+    <div className="grid gap-2">
+      <Label htmlFor="password">Pasahitza</Label>
+      <Input
+        id="password"
+        type="password"
+        required
+        name="password"
+        placeholder="••••••••"
+      />
+    </div>
+  </div>
+</Form>
+```
+
+```php User Creation Backend
+// From: app/Actions/Fortify/CreateNewUser.php
+public function create(array $input)
+{
+    Validator::make($input, [
+        'name' => ['required', 'string', 'max:255'],
+        'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+        'password' => ['required', 'string', 'min:8', 'confirmed'],
+    ])->validate();
+
+    return User::create([
+        'name' => $input['name'],
+        'email' => $input['email'],
+        'password' => Hash::make($input['password']),
+    ]);
+}
+```
+</CodeGroup>
+
+After successful registration, you'll be automatically logged in and redirected to the apartment selection screen.
+
+<Tip>
+  Your account is automatically synced with the Odoo ERP backend for comprehensive expense and task management.
+</Tip>
+
+### Step 2: Create or Join an Apartment
+
+You have two options:
+
+#### Option A: Create a New Apartment
+
+If you're the first person setting up your shared apartment:
+
+1. Click **"Sortu Pisua"** (Create Apartment)
+2. Enter your apartment name (up to 25 characters)
+3. Click **"Gorde Odoon"** (Save to Odoo)
+
+The system automatically generates a **5-digit code** that your roommates can use to join.
+
+<CodeGroup>
+```tsx Create Apartment UI
+// From: resources/js/pages/pisua/sortu.tsx
+const { data, setData, post, processing, errors } = useForm({
+    pisuaren_izena: '',
+});
+
+const submit = (e) => {
+    e.preventDefault();
+    post('/pisua');
+};
+
+<form onSubmit={submit}>
+  <input
+    type="text"
+    name="pisuaren_izena"
+    maxLength={25}
+    value={data.pisuaren_izena}
+    onChange={(e) => setData('pisuaren_izena', e.target.value)}
+    required
+  />
+  <button type="submit" disabled={processing}>
+    {processing ? 'Gordetzen...' : 'Gorde Odoon'}
+  </button>
+</form>
+```
+
+```php Create Apartment Backend
+// From: app/Http/Controllers/PisoController.php:82
+public function store(Request $request)
+{
+    $validate = $request->validate([
+        'pisuaren_izena' => 'required|string|max:255',
+    ]);
+
+    $user = $request->user();
+
+    // Generate unique 5-digit code
+    $kodigoa = null;
+    do {
+        $posibleKodigoa = str_pad(rand(0, 99999), 5, '0', STR_PAD_LEFT);
+        if (!Piso::where('kodigoa', $posibleKodigoa)->exists()) {
+            $kodigoa = $posibleKodigoa;
+        }
+    } while (!$kodigoa);
+
+    $pisua = Piso::create([
+        'izena' => $validate['pisuaren_izena'],
+        'kodigoa' => $kodigoa,
+        'odoo_id' => null,
+        'user_id' => $user->id,
+    ]);
+
+    // Attach user as coordinator
+    $pisua->inquilinos()->attach($user->id, ['mota' => 'koordinatzailea']);
+
+    // Sync to Odoo
+    Bus::chain([
+        new SyncUserToOdoo($user),
+        new SyncPisoToOdoo($pisua),
+        new SyncInquilinoToOdoo($user, $pisua)
+    ])->dispatch();
+
+    session(['pisua_id' => $pisua->id]);
+    return redirect()->route('dashboard');
+}
+```
+</CodeGroup>
+
+<Warning>
+  The person who creates the apartment becomes the **Coordinator (koordinatzailea)** and has administrative privileges.
+</Warning>
+
+#### Option B: Join an Existing Apartment
+
+If your roommate already created the apartment:
+
+1. Click **"Batu Pisuera"** (Join Apartment)
+2. Enter the **5-digit apartment code** your coordinator shared
+3. Click **"Join"**
+
+You'll be added as a regular member and can start using the apartment management features.
+
+```php Join Apartment Logic
+// From: app/Http/Controllers/PisoController.php:29
+public function join(Request $request)
+{
+    $validated = $request->validate([
+        'kodigoa' => 'required|string|exists:pisua,kodigoa',
+    ]);
+
+    $piso = Piso::where('kodigoa', $validated['kodigoa'])->first();
+
+    // Add user to apartment (prevents duplicates)
+    $request->user()->pisuak()->syncWithoutDetaching([
+        $piso->id => ['mota' => 'normala']
+    ]);
+
+    SyncInquilinoToOdoo::dispatch($request->user(), $piso);
+
+    session(['pisua_id' => $piso->id]);
+    return redirect()->route('dashboard');
+}
+```
+
+### Step 3: View Your Dashboard
+
+After creating or joining an apartment, you'll see your personalized dashboard showing:
+
+- **Egiteko** (To-Do): Tasks assigned to you that need to be started
+- **Egiten** (In Progress): Tasks you're currently working on
+- **Welcome message** with your name
+- Quick link to the calendar view
+
+<CodeGroup>
+```tsx Dashboard Component
+// From: resources/js/pages/dashboard.tsx
+export default function Dashboard({ 
+  zereginakEgiteko = [], 
+  zereginakEgiten = [] 
+}) {
+    const { auth } = usePage().props;
+
+    return (
+        <AppLayout>
+            <div className="rounded-xl p-8 mb-10">
+                <h1 className="text-3xl font-bold">
+                    KAIXO {auth.user.name}
+                </h1>
+                <p className="text-gray-700">
+                    Hemen duzu zure pisuko zereginen laburpena.
+                </p>
+            </div>
+            
+            {/* Task lists for EGITEKO and EGITEN */}
+            <TaskListSection 
+                title="EGITEKO" 
+                tasks={zereginakEgiteko}
+                colorBorder="#ef4444"
+            />
+            <TaskListSection 
+                title="EGITEN" 
+                tasks={zereginakEgiten}
+                colorBorder="#3b82f6"
+            />
+        </AppLayout>
+    );
+}
+```
+</CodeGroup>
+
+<Tip>
+  If you don't have any tasks yet, you'll see a helpful prompt to create your first task!
+</Tip>
+
+### Step 4: Add Your First Expense
+
+Now let's track a shared expense:
+
+1. Navigate to **"Gastuak"** (Expenses) from the menu
+2. Click **"Gastu Berria"** (New Expense)
+3. Fill in the expense details:
+   - **Izenburua** (Title): What was purchased (max 50 characters)
+   - **Zenbatekoa** (Amount): Cost in euros
+   - **Data** (Date): When the expense occurred
+   - **Ordainduta** (Paid by): Select who paid
+4. Click **"Sortu"** (Create)
+
+<CodeGroup>
+```tsx Add Expense Form
+// From: resources/js/pages/Gastuak/AddGastoForm.tsx
+const [values, setValues] = useState({
+    Nombre: '',
+    Cantidad: '',
+    Fecha: '',
+    IdUsuario: '',
+});
+
+const handleSubmit = (e) => {
+    e.preventDefault();
+    router.post('/gastuak/addGastua', values);
+};
+
+<form onSubmit={handleSubmit}>
+  <input
+    type="text"
+    name="Nombre"
+    maxLength={50}
+    value={values.Nombre}
+    placeholder="Adib: Erosketa..."
+    required
+  />
+  
+  <input
+    type="number"
+    name="Cantidad"
+    value={values.Cantidad}
+    placeholder="0.00"
+    step="0.01"
+    min="0"
+    required
+  />
+  
+  <input
+    type="date"
+    name="Fecha"
+    value={values.Fecha}
+    required
+  />
+  
+  <select name="IdUsuario" required>
+    <option value="">-- Aukeratu erabiltzailea --</option>
+    {usuarios.map(usuario => (
+      <option key={usuario.id} value={usuario.id}>
+        {usuario.name}
+      </option>
+    ))}
+  </select>
+  
+  <button type="submit">Sortu</button>
+</form>
+```
+
+```php Add Expense Backend
+// From: app/Http/Controllers/GastoController.php:59
+public function addGasto(Request $request)
+{
+    $datosProcesados = $request->validate([
+        'Nombre' => 'required|string|max:255',
+        'Cantidad' => 'required|numeric|min:0',
+        'Fecha'  => 'required|date',
+        'IdUsuario' => 'required|numeric',
+    ]);
+
+    $pisuaId = session('pisua_id');
+    $datosProcesados['IdPiso'] = $pisuaId;
+
+    // Save locally
+    $gasto = Gasto::create($datosProcesados);
+
+    // Sync to Odoo
+    SyncGastoToOdoo::dispatch($gasto);
+
+    return redirect('/gastuak');
+}
+```
+
+```php Gasto Model
+// From: app/Models/Gasto.php
+class Gasto extends Model
+{
+    protected $table = 'gastos';
+    protected $primaryKey = 'IdGasto';
+    
+    protected $fillable = [
+        'IdGasto',
+        'IdUsuario',
+        'IdPiso',
+        'Cantidad',
+        'Nombre',
+        'Fecha',
+        'odoo_id',
+        'synced',
+        'sync_error'
+    ];
+
+    protected $casts = [
+        'Cantidad'  => 'decimal:2',
+        'Fecha'     => 'date',
+    ];
+
+    public function usuario()
+    {
+        return $this->belongsTo(User::class, 'IdUsuario');
+    }
+
+    public function piso()
+    {
+        return $this->belongsTo(Piso::class, 'IdPiso');
+    }
+}
+```
+</CodeGroup>
+
+The expense is automatically:
+- Saved to the local database
+- Synced to Odoo for financial management
+- Visible to all apartment members
+- Included in balance calculations
+
+<Note>
+  The system automatically calculates who owes whom based on all expenses. Green indicates money you should receive, red indicates money you owe.
+</Note>
+
+### Step 5: Explore Key Features
+
+Now that you've completed the basics, explore these features:
+
+#### Expense Management
+- **View expenses by month**: Filter expenses using the date selector
+- **Edit expenses**: Update any expense details
+- **Delete expenses**: Remove incorrect entries
+- **Settle debts**: Mark payments between roommates
+
+#### Task Management  
+- **Create tasks**: Set up recurring household chores
+- **Calendar view**: See all tasks in a visual calendar
+- **Task states**: Track tasks as "Egiteko" (To-Do), "Egiten" (In Progress), or "Eginda" (Done)
+- **Assign tasks**: Distribute responsibilities among roommates
+
+#### Apartment Settings
+- **View members**: See all roommates in your apartment
+- **Edit apartment**: Change apartment name or code (coordinator only)
+- **Manage roles**: Promote members to coordinator (coordinator only)
+- **Leave apartment**: Exit an apartment when needed
+
+</Steps>
+
+---
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up a development environment for 7POINTS.NET
+  </Card>
+  <Card title="User Guide" icon="book" href="/guides/user-guide">
+    Learn about all features in detail
+  </Card>
+  <Card title="API Integration" icon="code" href="/features/api-integration">
+    Understand Odoo ERP integration
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Explore the technical architecture
+  </Card>
+</CardGroup>
+
+## Need Help?
+
+<Tip>
+  The application interface is primarily in **Basque (Euskara)** with some Spanish elements, designed for the Basque university student community.
+</Tip>
+
+Common terms to know:
+- **Pisua**: Apartment
+- **Gastuak**: Expenses  
+- **Zereginak**: Tasks
+- **Kideak**: Members
+- **Koordinatzailea**: Coordinator
+- **Egiteko**: To-Do
+- **Egiten**: In Progress
+- **Eginda**: Done
+
+For more assistance, refer to the comprehensive documentation sections or check the troubleshooting guide.

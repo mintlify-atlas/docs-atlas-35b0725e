@@ -1,0 +1,980 @@
+---
+title: Installation Guide
+description: Complete development environment setup for 7POINTS.NET (Pisukide) - from prerequisites to running your first development server.
+---
+
+This guide will walk you through setting up a complete development environment for **7POINTS.NET (Pisukide)**, the shared apartment management platform built with Laravel, React, and Odoo.
+
+<Note>
+  This installation guide is based on the comprehensive Basque README documentation and has been adapted for English-speaking developers.
+</Note>
+
+## Prerequisites
+
+Before you begin, ensure your system meets these requirements:
+
+### Software Requirements
+
+<CardGroup cols={2}>
+  <Card title="PHP" icon="code">
+    **Version 8.2 or higher**  
+    Required for Laravel framework
+  </Card>
+  <Card title="Composer" icon="box">
+    **Version 2.0 or higher**  
+    PHP dependency manager
+  </Card>
+  <Card title="Node.js" icon="node-js">
+    **Version 18 or higher**  
+    JavaScript runtime for React
+  </Card>
+  <Card title="npm" icon="npm">
+    **Version 10.8+**  
+    Node package manager
+  </Card>
+  <Card title="Docker" icon="docker">
+    **Docker Desktop**  
+    For Odoo and PostgreSQL
+  </Card>
+  <Card title="Git" icon="git">
+    **Latest version**  
+    Version control system
+  </Card>
+</CardGroup>
+
+### Hardware Requirements
+
+- **CPU**: 64-bit processor with virtualization support (Intel Core i5 or equivalent)
+- **RAM**: Minimum 8 GB (16 GB recommended for Docker)
+- **Storage**: At least 50 GB free space (SSD recommended)
+- **OS**: Windows 10/11 (64-bit), Linux (Ubuntu, Debian), or macOS
+
+<Warning>
+  For Windows users: **WSL 2** (Windows Subsystem for Linux) must be enabled for Docker Desktop.
+</Warning>
+
+---
+
+<Steps>
+
+### Step 1: Install PHP 8.2
+
+#### Windows (PowerShell as Administrator)
+
+Check if PHP is installed and verify the version:
+
+```powershell
+php -v
+```
+
+If PHP 8.2+ is not installed, run:
+
+<CodeGroup>
+```powershell Download PHP 8.2
+# Download PHP 8.2
+Invoke-WebRequest -Uri "https://windows.php.net/downloads/releases/archives/php-8.2-Win32-vs16-x64.zip" -OutFile "$env:USERPROFILE\Downloads\php82.zip"
+```
+
+```powershell Extract PHP
+# Create PHP directory and extract
+New-Item -ItemType Directory -Path "C:\php82" -Force
+Expand-Archive -Path "$env:USERPROFILE\Downloads\php82.zip" -DestinationPath "C:\php82"
+```
+
+```powershell Add to PATH
+# Add PHP to system PATH
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\php82", [EnvironmentVariableTarget]::Machine)
+```
+
+```powershell Verify Installation
+# Verify PHP installation
+php -v
+# Expected output: PHP 8.2.x (cli) (built: ...)
+```
+</CodeGroup>
+
+#### Configure PHP for Laravel
+
+```powershell
+# Copy and open php.ini
+Copy-Item "C:\php82\php.ini-development" "C:\php82\php.ini"
+notepad C:\php82\php.ini
+```
+
+In `php.ini`, **remove the semicolon (`;`)** from the beginning of these lines:
+
+```ini
+extension=curl
+extension=mbstring
+extension=bcmath
+extension=xml
+extension=mysqli
+extension=openssl
+extension=pdo_mysql
+extension=fileinfo
+```
+
+Save and close the file.
+
+#### Linux (Ubuntu/Debian)
+
+```bash
+sudo apt update
+sudo apt install -y php8.2 php8.2-cli php8.2-fpm php8.2-mysql php8.2-xml php8.2-mbstring php8.2-curl php8.2-zip php8.2-bcmath
+php -v
+```
+
+#### macOS
+
+```bash
+brew install php@8.2
+php -v
+```
+
+### Step 2: Install Composer 2.0+
+
+Check if Composer is installed:
+
+```bash
+composer -V
+# Expected: Composer version 2.x.x
+```
+
+#### Windows
+
+```powershell
+# Download Composer installer
+Invoke-WebRequest -Uri "https://getcomposer.org/installer" -OutFile "$env:USERPROFILE\Downloads\composer-setup.php"
+
+# Install Composer
+php "$env:USERPROFILE\Downloads\composer-setup.php" --install-dir=C:\php82 --filename=composer
+
+# Verify installation
+composer -V
+```
+
+#### Linux/macOS
+
+```bash
+php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+php -r "unlink('composer-setup.php');"
+composer -V
+```
+
+### Step 3: Install Node.js 18+ and npm
+
+Check current versions:
+
+```bash
+node -v
+npm -v
+```
+
+#### Windows
+
+Download and install from [nodejs.org](https://nodejs.org/) or use PowerShell:
+
+```powershell
+winget install -e --id OpenJS.NodeJS.LTS
+```
+
+#### Linux (Ubuntu/Debian)
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node -v
+npm -v
+```
+
+#### macOS
+
+```bash
+brew install node@18
+node -v
+npm -v
+```
+
+### Step 4: Install Docker Desktop
+
+Docker is required to run **Odoo ERP** and **PostgreSQL** containers.
+
+#### Windows
+
+```powershell
+winget install -e --id Docker.DockerDesktop
+```
+
+After installation:
+1. **Restart your computer**
+2. Open Docker Desktop
+3. Ensure WSL 2 is enabled in Docker settings
+
+Verify installation:
+
+```powershell
+docker --version
+```
+
+#### Linux
+
+```bash
+# Install Docker Engine
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# Add your user to docker group
+sudo usermod -aG docker $USER
+
+# Install Docker Compose
+sudo apt-get install docker-compose-plugin
+
+# Verify
+docker --version
+docker compose version
+```
+
+#### macOS
+
+Download Docker Desktop from [docker.com](https://www.docker.com/products/docker-desktop/) or:
+
+```bash
+brew install --cask docker
+```
+
+### Step 5: Install Git
+
+Check if Git is installed:
+
+```bash
+git --version
+```
+
+#### Windows
+
+```powershell
+winget install --id Git.Git -e --source winget
+git --version
+```
+
+#### Linux
+
+```bash
+sudo apt-get install git
+git --version
+```
+
+#### macOS
+
+```bash
+brew install git
+git --version
+```
+
+### Step 6: Install IDE (VS Code Recommended)
+
+#### Windows
+
+```powershell
+winget install --id Microsoft.VisualStudioCode -e --source winget
+code --version
+```
+
+#### Linux
+
+```bash
+sudo snap install code --classic
+code --version
+```
+
+#### macOS
+
+```bash
+brew install --cask visual-studio-code
+code --version
+```
+
+<Tip>
+  **Recommended VS Code Extensions:**
+  - PHP Intelephense
+  - Laravel Blade Snippets
+  - ES7+ React/Redux/React-Native snippets
+  - Docker
+  - Tailwind CSS IntelliSense
+</Tip>
+
+### Step 7: Clone the Repository
+
+Clone the 7POINTS.NET repository:
+
+```bash
+# Navigate to your development directory
+cd ~/Development  # or your preferred location
+
+# Clone the repository
+git clone <repository-url> 7points-net
+cd 7points-net
+```
+
+<Note>
+  Replace `<repository-url>` with the actual GitHub repository URL for the 7POINTS.NET project.
+</Note>
+
+### Step 8: Configure Laravel Environment
+
+Navigate to the Laravel directory:
+
+```bash
+cd laravel
+```
+
+#### Install PHP Dependencies
+
+```bash
+composer install
+```
+
+Based on the project's composer.json, this installs:
+
+```json
+{
+  "require": {
+    "php": "^8.2",
+    "inertiajs/inertia-laravel": "^2.0",
+    "laravel/fortify": "^1.30",
+    "laravel/framework": "^12.0",
+    "laravel/tinker": "^2.10.1",
+    "laravel/wayfinder": "^0.1.9"
+  }
+}
+```
+
+#### Create Environment File
+
+Since there's no `.env.example` in the repository, create a `.env` file:
+
+```bash
+cp .env.example .env  # If .env.example exists
+# OR create manually
+touch .env
+```
+
+Add the following configuration to `.env`:
+
+```bash
+APP_NAME="7POINTS.NET"
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_TIMEZONE=UTC
+APP_URL=http://localhost:8080
+
+APP_LOCALE=eu
+APP_FALLBACK_LOCALE=es
+APP_FAKER_LOCALE=en_US
+
+APP_MAINTENANCE_DRIVER=file
+# APP_MAINTENANCE_STORE=database
+
+BCRYPT_ROUNDS=12
+
+LOG_CHANNEL=stack
+LOG_STACK=single
+LOG_DEPRECATIONS_CHANNEL=null
+LOG_LEVEL=debug
+
+DB_CONNECTION=sqlite
+# For SQLite, create database file:
+# touch database/database.sqlite
+
+# If using PostgreSQL instead:
+# DB_CONNECTION=pgsql
+# DB_HOST=127.0.0.1
+# DB_PORT=5432
+# DB_DATABASE=laravel
+# DB_USERNAME=root
+# DB_PASSWORD=
+
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+SESSION_ENCRYPT=false
+SESSION_PATH=/
+SESSION_DOMAIN=null
+
+BROADCAST_CONNECTION=log
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=database
+
+CACHE_STORE=database
+CACHE_PREFIX=
+
+MEMCACHED_HOST=127.0.0.1
+
+REDIS_CLIENT=phpredis
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+MAIL_MAILER=log
+MAIL_HOST=127.0.0.1
+MAIL_PORT=2525
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="hello@example.com"
+MAIL_FROM_NAME="${APP_NAME}"
+
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=
+AWS_USE_PATH_STYLE_ENDPOINT=false
+
+VITE_APP_NAME="${APP_NAME}"
+
+# Odoo Configuration
+ODOO_URL=http://localhost:8069
+ODOO_DB=postgres
+ODOO_USERNAME=admin
+ODOO_PASSWORD=admin
+```
+
+#### Generate Application Key
+
+```bash
+php artisan key:generate
+```
+
+#### Create SQLite Database
+
+```bash
+touch database/database.sqlite
+```
+
+#### Run Database Migrations
+
+```bash
+php artisan migrate
+```
+
+This creates tables including:
+- `users` - User accounts
+- `pisua` - Apartments  
+- `gastos` - Expenses
+- `zereginak` - Tasks
+- `ordainketas` - Payments
+- `piso_user` - Apartment-user relationships
+
+<CodeGroup>
+```php Piso Model
+// From: app/Models/Piso.php
+class Piso extends Model
+{
+    protected $table = 'pisua';
+
+    protected $fillable = [
+        'izena',
+        'kodigoa',
+        'odoo_id',
+        'synced',
+        'sync_error',
+        'user_id',
+    ];
+
+    public function inquilinos()
+    {
+        return $this->belongsToMany(User::class, 'piso_user', 'piso_id', 'user_id')
+            ->withPivot('mota')
+            ->withTimestamps();
+    }
+
+    public function gastos()
+    {
+        return $this->hasMany(Gasto::class, 'IdPiso', 'id');
+    }
+}
+```
+
+```php Routes
+// From: routes/web.php
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('dashboard', [DashboadController::class, 'index'])
+        ->name('dashboard');
+    
+    // Apartment routes
+    Route::get('/pisua/sortu', [PisoController::class, 'create'])
+        ->name('pisua.create');
+    Route::post('/pisua', [PisoController::class, 'store'])
+        ->name('pisua.store');
+    
+    // Expense routes
+    Route::get('/gastuak', [GastoController::class, 'index']);
+    Route::post('/gastuak/addGastua', [GastoController::class, 'addGasto'])
+        ->name('gastuak.gehitu');
+    
+    // Task routes
+    Route::get('/zereginak', [ZereginakController::class, 'index'])
+        ->name('zereginak.index');
+});
+```
+</CodeGroup>
+
+### Step 9: Install Frontend Dependencies
+
+Install Node.js packages:
+
+```bash
+npm install
+```
+
+Based on package.json, this installs:
+
+```json
+{
+  "dependencies": {
+    "@headlessui/react": "^2.2.0",
+    "@heroicons/react": "^2.2.0",
+    "@inertiajs/react": "^2.1.4",
+    "@radix-ui/react-avatar": "^1.1.3",
+    "@radix-ui/react-dialog": "^1.1.6",
+    "@tailwindcss/vite": "^4.1.11",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-big-calendar": "^1.19.4",
+    "moment": "^2.30.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^7.0.4"
+  }
+}
+```
+
+<Note>
+  The project uses **Inertia.js** to seamlessly connect Laravel and React without building an API.
+</Note>
+
+### Step 10: Start Docker Containers (Odoo + PostgreSQL)
+
+Navigate back to the project root:
+
+```bash
+cd ..  # Back to project root
+```
+
+Start the Docker services:
+
+```bash
+docker compose up -d
+```
+
+This starts containers defined in `docker-compose.yaml`:
+
+<CodeGroup>
+```yaml Docker Compose Configuration
+# From: docker-compose.yaml
+version: '3.8'
+
+services:
+  # Laravel + PHP
+  laravel_app:
+    image: php:8.2-fpm-bullseye
+    build:
+      context: ./laravel
+      dockerfile: Dockerfile
+    container_name: laravel_app
+    working_dir: /var/www/html
+    volumes:
+      - ./laravel:/var/www/html
+    ports:
+      - "8080:8080"
+    command: bash -c "php artisan serve --host=0.0.0.0 --port=8080"
+    networks:
+      - app-network
+
+  # Odoo ERP
+  odoo:
+    image: odoo:17.0
+    depends_on:
+      - postgres
+    ports:
+      - "8069:8069"
+    volumes:
+      - ./odoo/addons:/mnt/extra-addons
+      - odoo_data:/var/lib/odoo
+    environment:
+      - HOST=postgres
+      - USER=odoo
+      - PASSWORD=myodoo
+    networks:
+      - app-network
+      
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=myodoo
+      - POSTGRES_USER=odoo
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  odoo_data:
+
+networks:
+  app-network:
+    driver: bridge
+```
+
+```bash Start Docker Services
+# Start all services
+docker compose up -d
+
+# Check running containers
+docker compose ps
+
+# View logs
+docker compose logs -f odoo
+
+# Stop services
+docker compose down
+```
+</CodeGroup>
+
+Verify services are running:
+
+```bash
+docker compose ps
+```
+
+You should see:
+- `laravel_app` on port 8080
+- `odoo` on port 8069  
+- `postgres` on port 5432
+
+<Warning>
+  **First-time Odoo setup:** Navigate to `http://localhost:8069` and create the initial database with:
+  - **Database name**: `postgres`
+  - **Email**: `admin@example.com`
+  - **Password**: `admin`
+</Warning>
+
+### Step 11: Run the Development Server
+
+You have two options for running the development environment:
+
+#### Option A: Using Docker (Recommended)
+
+The Laravel app is already running in Docker on port 8080.
+
+Start the Vite development server for hot reloading:
+
+```bash
+cd laravel
+npm run dev
+```
+
+#### Option B: Run Laravel Locally
+
+```bash
+cd laravel
+
+# Start Laravel development server
+php artisan serve --host=0.0.0.0 --port=8080
+
+# In another terminal, start Vite
+npm run dev
+```
+
+#### Option C: Use Composer Scripts (Concurrently)
+
+The project includes a convenient composer script:
+
+```bash
+composer run dev
+```
+
+This runs (from composer.json):
+```json
+"scripts": {
+  "dev": [
+    "Composer\\Config::disableProcessTimeout",
+    "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1\" \"npm run dev\" --names='server,queue,vite'"
+  ]
+}
+```
+
+This starts:
+- Laravel development server
+- Queue worker (for Odoo sync jobs)
+- Vite dev server with HMR
+
+### Step 12: Verify Installation
+
+Open your browser and test these URLs:
+
+<CardGroup cols={2}>
+  <Card title="Laravel App" icon="laravel">
+    http://localhost:8080
+  </Card>
+  <Card title="Odoo ERP" icon="building">
+    http://localhost:8069
+  </Card>
+</CardGroup>
+
+You should see:
+- **Laravel**: The 7POINTS.NET welcome page with registration/login options
+- **Odoo**: The Odoo login screen
+
+<Tip>
+  **Test the full flow:**
+  1. Register a new account at `http://localhost:8080/register`
+  2. Create a new apartment
+  3. Check Odoo at `http://localhost:8069` to verify data synchronization
+</Tip>
+
+</Steps>
+
+---
+
+## Development Workflow
+
+### Running Tests
+
+```bash
+cd laravel
+php artisan test
+```
+
+### Code Quality
+
+```bash
+# Laravel Pint (PHP formatter)
+./vendor/bin/pint
+
+# ESLint (JavaScript linter)
+npm run lint
+
+# Prettier (Code formatter)
+npm run format
+```
+
+### Building for Production
+
+```bash
+# Build frontend assets
+npm run build
+
+# Optimize Laravel
+php artisan optimize
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
+### Queue Workers
+
+The application uses queues for Odoo synchronization:
+
+```bash
+# Run queue worker
+php artisan queue:work
+
+# Or use queue:listen for development (auto-reloads)
+php artisan queue:listen --tries=1
+```
+
+Sync jobs include:
+- `SyncUserToOdoo` - Sync users to Odoo partners
+- `SyncPisoToOdoo` - Sync apartments to Odoo
+- `SyncGastoToOdoo` - Sync expenses to Odoo
+- `SyncZereginakToOdoo` - Sync tasks to Odoo
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+<Accordion title="Port 8080 already in use">
+  **Solution 1:** Stop the conflicting service
+  
+  ```bash
+  # Find process using port 8080
+  lsof -i :8080  # macOS/Linux
+  netstat -ano | findstr :8080  # Windows
+  
+  # Kill the process
+  kill -9 <PID>
+  ```
+  
+  **Solution 2:** Change the port
+  
+  ```bash
+  php artisan serve --port=8000
+  ```
+</Accordion>
+
+<Accordion title="Docker containers won't start">
+  **Check Docker is running:**
+  ```bash
+  docker info
+  ```
+  
+  **Check logs:**
+  ```bash
+  docker compose logs
+  ```
+  
+  **Reset Docker:**
+  ```bash
+  docker compose down -v
+  docker compose up -d
+  ```
+</Accordion>
+
+<Accordion title="Composer install fails">
+  **Clear Composer cache:**
+  ```bash
+  composer clear-cache
+  composer install
+  ```
+  
+  **Update dependencies:**
+  ```bash
+  composer update
+  ```
+</Accordion>
+
+<Accordion title="npm install fails">
+  **Clear npm cache:**
+  ```bash
+  npm cache clean --force
+  rm -rf node_modules package-lock.json
+  npm install
+  ```
+</Accordion>
+
+<Accordion title="Odoo connection errors">
+  **Verify Odoo is running:**
+  ```bash
+  docker compose ps
+  docker compose logs odoo
+  ```
+  
+  **Check .env configuration:**
+  ```bash
+  ODOO_URL=http://localhost:8069
+  ODOO_DB=postgres
+  ODOO_USERNAME=admin
+  ODOO_PASSWORD=admin
+  ```
+  
+  **Test Odoo API manually:**
+  ```bash
+  curl http://localhost:8069/web/database/list
+  ```
+</Accordion>
+
+<Accordion title="Migration errors">
+  **Reset database:**
+  ```bash
+  php artisan migrate:fresh
+  ```
+  
+  **Rollback and re-run:**
+  ```bash
+  php artisan migrate:rollback
+  php artisan migrate
+  ```
+</Accordion>
+
+### Known Issues (from README)
+
+Based on the "Izandako arazoak" section:
+
+1. **Technology Learning Curve**: Laravel, Odoo, and React integration requires time to master
+2. **Design Iterations**: Initial prototypes may need refinement based on feedback  
+3. **Version Compatibility**: Ensure PHP 8.2+, Node 18+, and compatible package versions
+4. **Git Repository Issues**: Keep branches organized and avoid conflicts
+
+---
+
+## Project Structure
+
+```
+7points-net/
+├── laravel/                 # Laravel backend
+│   ├── app/
+│   │   ├── Http/
+│   │   │   └── Controllers/
+│   │   │       ├── PisoController.php
+│   │   │       ├── GastoController.php
+│   │   │       └── ZereginakController.php
+│   │   ├── Models/
+│   │   │   ├── Piso.php
+│   │   │   ├── Gasto.php
+│   │   │   ├── User.php
+│   │   │   └── Zereginak.php
+│   │   ├── Jobs/           # Odoo sync jobs
+│   │   └── Services/
+│   │       └── OdooService.php
+│   ├── database/
+│   │   └── migrations/
+│   ├── resources/
+│   │   └── js/             # React frontend
+│   │       ├── pages/
+│   │       │   ├── dashboard.tsx
+│   │       │   ├── auth/
+│   │       │   ├── pisua/
+│   │       │   ├── Gastuak/
+│   │       │   └── Zereginak/
+│   │       └── components/
+│   ├── routes/
+│   │   └── web.php
+│   ├── .env
+│   ├── composer.json
+│   └── package.json
+├── odoo/
+│   └── addons/            # Custom Odoo modules
+├── docker-compose.yaml
+└── README.md
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Learn how to use 7POINTS.NET as an end user
+  </Card>
+  <Card title="Architecture Overview" icon="sitemap" href="/architecture/overview">
+    Understand the technical architecture
+  </Card>
+  <Card title="API Integration" icon="plug" href="/features/api-integration">
+    Learn about Odoo ERP integration
+  </Card>
+  <Card title="Contributing" icon="code-branch" href="/guides/contributing">
+    Contribute to the project
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- **Laravel Documentation**: [laravel.com/docs](https://laravel.com/docs/12.x)
+- **React Documentation**: [react.dev](https://react.dev)
+- **Inertia.js**: [inertiajs.com](https://inertiajs.com)
+- **Odoo Documentation**: [odoo.com/documentation](https://www.odoo.com/documentation/17.0)
+- **Docker Documentation**: [docs.docker.com](https://docs.docker.com)
+- **Tailwind CSS**: [tailwindcss.com](https://tailwindcss.com)
+
+<Note>
+  This project was developed as part of a university course at **Migel Altuna LHII** educational institution in the Basque Country.
+</Note>

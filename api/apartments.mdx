@@ -1,0 +1,491 @@
+---
+title: 'Apartments'
+description: 'Manage apartments (pisuak) in the 7POINTS.NET system'
+icon: 'building'
+---
+
+## Overview
+
+The Apartments API allows you to create, manage, and interact with apartment spaces where members share expenses and tasks.
+
+<Note>
+All apartment endpoints require authentication with `auth` and `verified` middleware.
+</Note>
+
+## Create Apartment
+
+Create a new apartment. The creator automatically becomes the coordinator.
+
+```
+POST /pisua
+```
+
+### Request Parameters
+
+<ParamField path="pisuaren_izena" type="string" required>
+  Name of the apartment (max 255 characters)
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X POST https://your-domain.com/pisua \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  -d '{
+    "pisuaren_izena": "Downtown Apartment"
+  }'
+```
+
+### Response
+
+Redirects to dashboard with session variables set:
+- `pisua_id`: The apartment ID
+- `pisua_izena`: The apartment name
+
+<ResponseField name="id" type="integer">
+  Auto-generated apartment ID
+</ResponseField>
+
+<ResponseField name="izena" type="string">
+  Apartment name
+</ResponseField>
+
+<ResponseField name="kodigoa" type="string">
+  Auto-generated 5-digit join code (e.g., "04823")
+</ResponseField>
+
+<ResponseField name="user_id" type="integer">
+  ID of the creator (coordinator)
+</ResponseField>
+
+<ResponseField name="odoo_id" type="integer" nullable>
+  Odoo ERP integration ID
+</ResponseField>
+
+---
+
+## Join Apartment
+
+Join an existing apartment using its code.
+
+```
+POST /pisua/batu
+```
+
+### Request Parameters
+
+<ParamField path="kodigoa" type="string" required>
+  5-digit apartment join code
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X POST https://your-domain.com/pisua/batu \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  -d '{
+    "kodigoa": "04823"
+  }'
+```
+
+### Response
+
+Redirects to dashboard. User is added with role `normala` (regular member).
+
+### Error Responses
+
+```json
+{
+  "errors": {
+    "kodigoa": ["Kode hori ez da existitzen. (El código no existe)"]
+  }
+}
+```
+
+---
+
+## Select Apartment
+
+Set an apartment as the active apartment in the session.
+
+```
+POST /pisua/{id}/aukeratu
+```
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Apartment ID to select
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X POST https://your-domain.com/pisua/123/aukeratu \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Redirects to tasks page (`zereginak.index`) with session set.
+
+---
+
+## List User's Apartments
+
+Get all apartments the authenticated user belongs to.
+
+```
+GET /pisua/erakutsi
+```
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/pisua/erakutsi \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response Example
+
+```json
+{
+  "pisuak": [
+    {
+      "id": 1,
+      "izena": "Downtown Apartment",
+      "kodigoa": "04823",
+      "user_id": 5,
+      "odoo_id": 123,
+      "created_at": "2026-01-15T10:30:00.000000Z",
+      "updated_at": "2026-01-15T10:30:00.000000Z",
+      "user": {
+        "id": 5,
+        "name": "John Doe",
+        "email": "john@example.com"
+      },
+      "pivot": {
+        "user_id": 5,
+        "piso_id": 1,
+        "mota": "koordinatzailea"
+      }
+    }
+  ]
+}
+```
+
+<ResponseField name="pisuak" type="array">
+  Array of apartment objects
+</ResponseField>
+
+<ResponseField name="pisuak[].id" type="integer">
+  Apartment ID
+</ResponseField>
+
+<ResponseField name="pisuak[].izena" type="string">
+  Apartment name
+</ResponseField>
+
+<ResponseField name="pisuak[].kodigoa" type="string">
+  Join code
+</ResponseField>
+
+<ResponseField name="pisuak[].user" type="object">
+  Coordinator user object
+</ResponseField>
+
+<ResponseField name="pisuak[].pivot.mota" type="string">
+  User's role: `koordinatzailea` (coordinator) or `normala` (regular member)
+</ResponseField>
+
+---
+
+## Get Apartment for Editing
+
+Retrieve apartment details for editing.
+
+```
+GET /pisua/{pisua}/edit
+```
+
+<Note>
+Only the coordinator can edit apartments.
+</Note>
+
+### Path Parameters
+
+<ParamField path="pisua" type="integer" required>
+  Apartment ID
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/pisua/1/edit \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Returns Inertia render with `pisua` object.
+
+---
+
+## Update Apartment
+
+Update apartment details.
+
+```
+PUT /pisua/{pisua}
+```
+
+<Note>
+Only the coordinator can update apartments.
+</Note>
+
+### Path Parameters
+
+<ParamField path="pisua" type="integer" required>
+  Apartment ID
+</ParamField>
+
+### Request Parameters
+
+<ParamField path="pisuaren_izena" type="string" required>
+  New apartment name (max 255 characters)
+</ParamField>
+
+<ParamField path="pisuaren_kodigoa" type="string" required>
+  New join code (max 50 characters)
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X PUT https://your-domain.com/pisua/1 \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt \
+  -d '{
+    "pisuaren_izena": "Updated Apartment Name",
+    "pisuaren_kodigoa": "12345"
+  }'
+```
+
+### Response
+
+Redirects to `/pisua/kideak` (members page).
+
+---
+
+## Delete Apartment
+
+Delete an apartment permanently.
+
+```
+DELETE /pisua/{pisua}
+```
+
+<Warning>
+Only the coordinator can delete apartments. This action is irreversible.
+</Warning>
+
+### Path Parameters
+
+<ParamField path="pisua" type="integer" required>
+  Apartment ID
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X DELETE https://your-domain.com/pisua/1 \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Redirects to apartment list page.
+
+---
+
+## Get Apartment Members
+
+List all members of the current apartment.
+
+```
+GET /pisua/kideak
+```
+
+### Request Example
+
+```bash
+curl -X GET https://your-domain.com/pisua/kideak \
+  -H "Accept: application/json" \
+  --cookie cookies.txt
+```
+
+### Response Example
+
+```json
+{
+  "pisua": {
+    "id": 1,
+    "izena": "Downtown Apartment",
+    "kodigoa": "04823"
+  },
+  "kideak": [
+    {
+      "id": 5,
+      "name": "John Doe",
+      "email": "john@example.com",
+      "pivot": {
+        "piso_id": 1,
+        "user_id": 5,
+        "mota": "koordinatzailea"
+      }
+    },
+    {
+      "id": 7,
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "pivot": {
+        "piso_id": 1,
+        "user_id": 7,
+        "mota": "normala"
+      }
+    }
+  ],
+  "isCurrentUserAdmin": true
+}
+```
+
+<ResponseField name="pisua" type="object">
+  Current apartment object
+</ResponseField>
+
+<ResponseField name="kideak" type="array">
+  Array of member user objects
+</ResponseField>
+
+<ResponseField name="isCurrentUserAdmin" type="boolean">
+  Whether the current user is the coordinator
+</ResponseField>
+
+---
+
+## Promote Member to Coordinator
+
+Transfer coordinator role to another member.
+
+```
+PUT /pisua/{pisuaId}/kidea/{memberId}/promote
+```
+
+<Warning>
+Only the current coordinator can promote members. The current coordinator becomes a regular member.
+</Warning>
+
+### Path Parameters
+
+<ParamField path="pisuaId" type="integer" required>
+  Apartment ID
+</ParamField>
+
+<ParamField path="memberId" type="integer" required>
+  User ID to promote
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X PUT https://your-domain.com/pisua/1/kidea/7/promote \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Returns back to previous page.
+
+---
+
+## Remove Member
+
+Remove a member from the apartment.
+
+```
+DELETE /pisua/{pisuaId}/kidea/{memberId}/remove
+```
+
+<Note>
+Only the coordinator can remove other members. Members can remove themselves.
+</Note>
+
+### Path Parameters
+
+<ParamField path="pisuaId" type="integer" required>
+  Apartment ID
+</ParamField>
+
+<ParamField path="memberId" type="integer" required>
+  User ID to remove
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X DELETE https://your-domain.com/pisua/1/kidea/7/remove \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+If removing yourself: redirects to dashboard.
+Otherwise: returns back to previous page.
+
+---
+
+## Leave Apartment
+
+Leave an apartment voluntarily.
+
+```
+DELETE /pisua/{pisua}/atera
+```
+
+### Path Parameters
+
+<ParamField path="pisua" type="integer" required>
+  Apartment ID to leave
+</ParamField>
+
+### Request Example
+
+```bash
+curl -X DELETE https://your-domain.com/pisua/1/atera \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
+  --cookie cookies.txt
+```
+
+### Response
+
+Redirects to dashboard with message.
+
+<Info>
+If the coordinator leaves, the oldest remaining member automatically becomes the new coordinator.
+</Info>
+
+## Member Roles
+
+- **koordinatzailea**: Coordinator with full permissions (edit, delete, manage members)
+- **normala**: Regular member with limited permissions

@@ -1,0 +1,523 @@
+---
+title: 'Monitoring and Observability'
+description: 'Monitor application health and performance'
+---
+
+## Overview
+
+Effective monitoring is essential for maintaining 7POINTS.NET in production. This guide covers logging, health checks, performance monitoring, and error tracking strategies.
+
+## Application Logs
+
+### Laravel Logging
+
+Laravel uses configurable logging channels defined in `config/logging.php`.
+
+#### Log Channels
+
+```env .env
+# Log channel: stack, single, daily, slack, syslog, errorlog
+LOG_CHANNEL=stack
+
+# Minimum log level: debug, info, notice, warning, error, critical, alert, emergency
+LOG_LEVEL=debug
+```
+
+#### Viewing Laravel Logs
+
+<CodeGroup>
+```bash Local Development
+# View latest logs
+tail -f laravel/storage/logs/laravel.log
+
+# View last 100 lines
+tail -n 100 laravel/storage/logs/laravel.log
+
+# Search for errors
+grep -i "error" laravel/storage/logs/laravel.log
+```
+
+```bash Docker
+# Follow Laravel logs
+docker-compose exec laravel_app tail -f storage/logs/laravel.log
+
+# View container output
+docker-compose logs -f laravel_app
+```
+</CodeGroup>
+
+#### Laravel Log Levels
+
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| `debug` | Detailed debug information | Development only |
+| `info` | Informational messages | User actions, events |
+| `notice` | Normal but significant | Important events |
+| `warning` | Warning messages | Deprecated usage |
+| `error` | Error messages | Recoverable errors |
+| `critical` | Critical conditions | Application component unavailable |
+| `alert` | Action must be taken immediately | Database down |
+| `emergency` | System is unusable | Complete system failure |
+
+<Warning>
+  Set `LOG_LEVEL=error` in production to avoid excessive logging and potential security issues.
+</Warning>
+
+### Odoo Logging
+
+#### Odoo Log Configuration
+
+Configure Odoo logging in `odoo.conf`:
+
+```ini odoo/config/odoo.conf
+[options]
+# Log level: debug, info, warning, error, critical
+log_level = info
+
+# Log file location
+logfile = /var/log/odoo/odoo.log
+
+# Log to stderr (useful for Docker)
+log_handler = :INFO
+```
+
+#### Viewing Odoo Logs
+
+```bash
+# View Odoo container logs
+docker-compose logs -f odoo
+
+# View last 200 lines
+docker-compose logs --tail=200 odoo
+
+# Save logs to file
+docker-compose logs odoo > odoo_logs_$(date +%Y%m%d).txt
+```
+
+### PostgreSQL Logging
+
+#### Enable Query Logging
+
+Create custom PostgreSQL configuration:
+
+```conf postgres/postgresql.conf
+# Log all queries (development only)
+log_statement = 'all'
+
+# Log queries taking longer than 1 second
+log_min_duration_statement = 1000
+
+# Log connections
+log_connections = on
+log_disconnections = on
+```
+
+Mount configuration in docker-compose:
+
+```yaml docker-compose.yaml
+postgres:
+  volumes:
+    - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf
+  command: postgres -c config_file=/etc/postgresql/postgresql.conf
+```
+
+#### Viewing PostgreSQL Logs
+
+```bash
+# View PostgreSQL logs
+docker-compose logs -f postgres
+
+# View slow queries
+docker-compose logs postgres | grep "duration:"
+```
+
+## Docker Logs Management
+
+### Viewing All Service Logs
+
+```bash
+# View all services
+docker-compose logs
+
+# Follow all services in real-time
+docker-compose logs -f
+
+# View specific service
+docker-compose logs laravel_app
+docker-compose logs odoo
+docker-compose logs postgres
+
+# View logs since specific time
+docker-compose logs --since 1h
+docker-compose logs --since "2026-03-05T10:00:00"
+
+# View last N lines
+docker-compose logs --tail=100
+```
+
+### Log Rotation
+
+Configure Docker log rotation to prevent disk space issues:
+
+```json daemon.json
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+```
+
+Or per-service in docker-compose:
+
+```yaml docker-compose.yaml
+laravel_app:
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+```
+
+## Health Check Endpoints
+
+### Laravel Health Check
+
+Create a health check route:
+
+```php routes/web.php
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'timestamp' => now()->toIso8601String(),
+        'services' => [
+            'database' => checkDatabaseConnection(),
+            'odoo' => checkOdooConnection(),
+        ]
+    ]);
+});
+
+function checkDatabaseConnection() {
+    try {
+        DB::connection()->getPdo();
+        return 'healthy';
+    } catch (\Exception $e) {
+        return 'unhealthy';
+    }
+}
+
+function checkOdooConnection() {
+    try {
+        // Test Odoo API connection
+        // Implementation depends on your Odoo integration
+        return 'healthy';
+    } catch (\Exception $e) {
+        return 'unhealthy';
+    }
+}
+```
+
+### Docker Health Checks
+
+Add health checks to docker-compose:
+
+```yaml docker-compose.yaml
+laravel_app:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+
+odoo:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8069/web/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+
+postgres:
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U odoo"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+```
+
+Check health status:
+
+```bash
+# View health status
+docker-compose ps
+
+# Inspect specific container
+docker inspect --format='{{.State.Health.Status}}' laravel_app
+```
+
+## Performance Monitoring
+
+### Application Performance
+
+#### Laravel Telescope (Development)
+
+Install Laravel Telescope for debugging:
+
+```bash
+composer require laravel/telescope --dev
+php artisan telescope:install
+php artisan migrate
+```
+
+Access at: http://localhost:8080/telescope
+
+#### Query Performance
+
+Log slow queries in Laravel:
+
+```php app/Providers/AppServiceProvider.php
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+public function boot()
+{
+    // Log queries taking longer than 1 second
+    DB::listen(function ($query) {
+        if ($query->time > 1000) {
+            Log::warning('Slow query detected', [
+                'sql' => $query->sql,
+                'bindings' => $query->bindings,
+                'time' => $query->time
+            ]);
+        }
+    });
+}
+```
+
+### System Resource Monitoring
+
+#### Docker Stats
+
+```bash
+# Real-time resource usage
+docker stats
+
+# Specific container
+docker stats laravel_app
+
+# Format output
+docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+```
+
+#### Container Resource Limits
+
+Set resource limits in docker-compose:
+
+```yaml docker-compose.yaml
+laravel_app:
+  deploy:
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+odoo:
+  deploy:
+    resources:
+      limits:
+        cpus: '2'
+        memory: 2G
+      reservations:
+        cpus: '1'
+        memory: 1G
+```
+
+### Database Performance
+
+```sql
+-- Active queries
+SELECT pid, usename, application_name, state, query 
+FROM pg_stat_activity 
+WHERE state = 'active';
+
+-- Long-running queries
+SELECT pid, now() - query_start as duration, query 
+FROM pg_stat_activity 
+WHERE state = 'active' AND (now() - query_start) > interval '1 minute';
+
+-- Kill long-running query
+SELECT pg_terminate_backend(pid);
+```
+
+## Error Tracking
+
+### Laravel Error Handling
+
+#### Log Exceptions
+
+```php app/Exceptions/Handler.php
+use Illuminate\Support\Facades\Log;
+
+public function report(Throwable $exception)
+{
+    if ($this->shouldReport($exception)) {
+        Log::error('Exception occurred', [
+            'message' => $exception->getMessage(),
+            'file' => $exception->getFile(),
+            'line' => $exception->getLine(),
+            'trace' => $exception->getTraceAsString()
+        ]);
+    }
+
+    parent::report($exception);
+}
+```
+
+### Sentry Integration (Optional)
+
+Integrate Sentry for error tracking:
+
+```bash
+composer require sentry/sentry-laravel
+php artisan sentry:publish --dsn=YOUR_SENTRY_DSN
+```
+
+```env .env
+SENTRY_LARAVEL_DSN=https://your-sentry-dsn
+SENTRY_TRACES_SAMPLE_RATE=1.0
+```
+
+## Log Aggregation
+
+### ELK Stack Integration
+
+For production, consider the ELK stack (Elasticsearch, Logstash, Kibana):
+
+```yaml docker-compose.prod.yml
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    environment:
+      - discovery.type=single-node
+    ports:
+      - "9200:9200"
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    volumes:
+      - ./logstash/config:/usr/share/logstash/pipeline
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+```
+
+### Centralized Logging with Fluentd
+
+Alternatively, use Fluentd for log aggregation:
+
+```yaml docker-compose.yaml
+laravel_app:
+  logging:
+    driver: fluentd
+    options:
+      fluentd-address: localhost:24224
+      tag: laravel.app
+```
+
+## Monitoring Best Practices
+
+<AccordionGroup>
+  <Accordion title="Development Environment">
+    - Enable `APP_DEBUG=true`
+    - Use `LOG_LEVEL=debug`
+    - Install Laravel Telescope
+    - Monitor all queries
+    - Log all errors to file
+  </Accordion>
+
+  <Accordion title="Production Environment">
+    - Disable `APP_DEBUG=false`
+    - Use `LOG_LEVEL=error`
+    - Implement health checks
+    - Set up error tracking (Sentry)
+    - Configure log rotation
+    - Monitor resource usage
+    - Set up alerting for critical errors
+    - Use centralized logging (ELK, Fluentd)
+  </Accordion>
+</AccordionGroup>
+
+## Alerting Strategies
+
+### Email Alerts
+
+Configure Laravel to send email on critical errors:
+
+```php config/logging.php
+'channels' => [
+    'slack' => [
+        'driver' => 'slack',
+        'url' => env('LOG_SLACK_WEBHOOK_URL'),
+        'username' => '7POINTS.NET Alerts',
+        'level' => 'critical',
+    ],
+],
+```
+
+### Uptime Monitoring
+
+Use external services:
+
+- **UptimeRobot**: Free uptime monitoring
+- **Pingdom**: Comprehensive monitoring
+- **StatusCake**: Multi-location checks
+
+Monitor endpoints:
+- http://your-domain.com/health
+- http://your-domain.com:8069/web/health
+
+## Monitoring Dashboard
+
+### Grafana + Prometheus
+
+For advanced monitoring, integrate Prometheus and Grafana:
+
+```yaml docker-compose.monitoring.yml
+services:
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/deployment/troubleshooting">
+    Common issues and solutions
+  </Card>
+  <Card title="Environment Config" icon="gear" href="/deployment/environment">
+    Configure environment variables
+  </Card>
+</CardGroup>

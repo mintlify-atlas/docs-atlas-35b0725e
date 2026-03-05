@@ -1,0 +1,457 @@
+---
+title: 'Member Roles & Permissions'
+description: 'Understanding coordinator and member roles, permissions, and management capabilities'
+icon: 'shield-halved'
+---
+
+This guide explains the role system in 7POINTS.NET, detailing the differences between coordinators and regular members, and how to manage roles within your apartment.
+
+## Role Overview
+
+Every apartment member has one of two roles:
+
+<CardGroup cols={2}>
+  <Card title="Koordinatzailea" icon="shield-check" color="#6366f1">
+    **Coordinator** - Full administrative privileges for the apartment
+  </Card>
+  <Card title="Normala" icon="user" color="#6b7280">
+    **Regular Member** - Standard access to apartment features
+  </Card>
+</CardGroup>
+
+The role is stored in the `mota` field of the pivot table connecting users to apartments (pisos).
+
+## Regular Member (Normala)
+
+### Permissions
+
+Regular members can:
+
+<AccordionGroup>
+  <Accordion title="Task Management" icon="list-check">
+    - View all apartment tasks
+    - Create new tasks
+    - Edit tasks (including reassignment)
+    - Delete tasks
+    - Update task status (to-do, in-progress, completed)
+    - Assign tasks to any apartment member
+  </Accordion>
+  
+  <Accordion title="Expense Management" icon="money-bill">
+    - View all apartment expenses
+    - Add new expenses
+    - Edit existing expenses (any expense, not just their own)
+    - Delete expenses
+    - View debt calculations
+    - Settle debts (mark payments as complete)
+  </Accordion>
+  
+  <Accordion title="Member Access" icon="users">
+    - View list of all apartment members
+    - See member roles (coordinator vs regular)
+    - See member join dates
+    - View contact information
+  </Accordion>
+  
+  <Accordion title="Self-Management" icon="user-gear">
+    - Leave the apartment voluntarily
+    - Switch between multiple apartments (if member of several)
+    - Update their own profile information
+  </Accordion>
+</AccordionGroup>
+
+### Restrictions
+
+Regular members CANNOT:
+
+- Edit apartment details (name, code)
+- Delete the entire apartment
+- Remove other members from the apartment
+- Promote members to coordinator
+- Access coordinator-specific settings
+
+<Info>
+Regular members have full access to day-to-day apartment management (tasks, expenses) but cannot modify apartment structure or membership.
+</Info>
+
+## Coordinator (Koordinatzailea)
+
+### Permissions
+
+Coordinators have ALL regular member permissions, plus:
+
+<AccordionGroup>
+  <Accordion title="Apartment Management" icon="building">
+    - **Edit apartment details**: Change apartment name and code
+    - **Delete apartment**: Permanently remove the entire apartment
+    - Access apartment settings and configuration
+    
+    These options are available via the three-dot menu (⋮) on the members page.
+  </Accordion>
+  
+  <Accordion title="Member Management" icon="user-shield">
+    - **Remove members**: Kick any regular member from the apartment
+    - **Promote members**: Grant coordinator status to regular members
+    - View detailed member information
+    
+    Each member card shows a dropdown menu with these options (except for other coordinators).
+  </Accordion>
+  
+  <Accordion title="Authority Transfer" icon="hand-holding-hand">
+    - Transfer coordinator status to another member
+    - When transferring, the current coordinator becomes a regular member
+    - Only one coordinator can exist per apartment at a time
+  </Accordion>
+</AccordionGroup>
+
+### Important Coordinator Notes
+
+<Warning>
+Deleting an apartment is permanent and cannot be undone. All tasks, expenses, and member associations will be lost. Use this action with extreme caution.
+</Warning>
+
+<Note>
+Coordinators cannot remove other coordinators from the apartment. The promoted coordinator must demote the previous one, or that person must leave voluntarily.
+</Note>
+
+## How Roles Are Assigned
+
+### Automatic Assignment
+
+<Steps>
+  <Step title="Apartment Creation">
+    When someone creates a new apartment:
+    - They automatically become the coordinator
+    - Role: `mota: 'koordinatzailea'`
+    - This happens in `PisoController@store` (line 107)
+  </Step>
+
+  <Step title="Joining via Code">
+    When someone joins using an apartment code:
+    - They become a regular member
+    - Role: `mota: 'normala'`
+    - This happens in `PisoController@join` (line 42)
+  </Step>
+</Steps>
+
+### Manual Role Changes
+
+Only coordinators can change roles through the members page.
+
+## Promoting a Member to Coordinator
+
+Coordinators can transfer their role to another member:
+
+<Steps>
+  <Step title="Access Members Page">
+    Navigate to **Kideak** (Members) from the menu or go to `/pisua/kideak`.
+  </Step>
+
+  <Step title="Find the Member to Promote">
+    Locate the member card for the person you want to promote.
+    
+    Regular members show a **"Kidea"** (Member) badge.
+  </Step>
+
+  <Step title="Open Member Menu">
+    Click the three-dot menu (⋮) icon on the member's card.
+    
+    This menu only appears for regular members (not other coordinators).
+  </Step>
+
+  <Step title="Click 'Koordinatzaile egin'">
+    Select **"Koordinatzaile egin"** (Make Coordinator) from the dropdown.
+    
+    A transaction occurs that:
+    - Changes the selected member's role to `koordinatzailea`
+    - Changes YOUR role to `normala`
+    - Refreshes the page to reflect changes
+  </Step>
+
+  <Step title="Role Transfer Complete">
+    The promoted member now has full coordinator permissions.
+    
+    You are now a regular member and can no longer manage the apartment structure.
+  </Step>
+</Steps>
+
+<Warning>
+Promoting someone to coordinator AUTOMATICALLY demotes you to a regular member. Only promote members you trust completely, as you'll lose administrative control.
+</Warning>
+
+## Removing a Member
+
+Coordinators can remove regular members from the apartment:
+
+<Steps>
+  <Step title="Access Members Page">
+    Go to the Kideak (Members) page.
+  </Step>
+
+  <Step title="Locate the Member">
+    Find the member card for the person to remove.
+  </Step>
+
+  <Step title="Open Member Menu">
+    Click the three-dot menu (⋮) on their card.
+  </Step>
+
+  <Step title="Click 'Pisotik kendu'">
+    Select **"Pisotik kendu"** (Remove from apartment).
+    
+    Confirm the action when prompted:
+    **"Ziur zaude erabiltzaile hau pisotik bota nahi duzula?"**
+    (Are you sure you want to remove this user from the apartment?)
+  </Step>
+
+  <Step title="Member Removed">
+    The member is immediately removed:
+    - Their access to the apartment is revoked
+    - They're detached from the `pisua` relationship
+    - If they were logged in, they'll lose access on next page load
+    - They can rejoin later if they have the apartment code
+  </Step>
+</Steps>
+
+<Note>
+Removed members can rejoin using the apartment code if they still have it. To prevent this, change the apartment code after removing someone.
+</Note>
+
+## Leaving an Apartment Voluntarily
+
+Any member (coordinator or regular) can leave an apartment:
+
+<Steps>
+  <Step title="Access Members Page">
+    Navigate to the Kideak page for the apartment you want to leave.
+  </Step>
+
+  <Step title="Click 'Atera pisutik'">
+    At the bottom left of the page, click the **"Atera pisutik"** (Leave apartment) button.
+    
+    This button is visible to all members, including coordinators.
+  </Step>
+
+  <Step title="Confirm Departure">
+    Confirm the action when prompted:
+    **"Ziur zaude pisutik atera nahi duzula? Ekintza hau ezin da desegin."**
+    (Are you sure you want to leave the apartment? This action cannot be undone.)
+  </Step>
+
+  <Step title="Automatic Succession (Coordinators Only)">
+    If you're the coordinator:
+    - The system finds the OLDEST member (earliest `created_at` in pivot table)
+    - That member is automatically promoted to coordinator
+    - This ensures the apartment always has a coordinator
+    
+    If you're a regular member:
+    - You simply leave, no succession needed
+  </Step>
+
+  <Step title="Session Cleared">
+    After leaving:
+    - Your apartment session is cleared
+    - You're redirected to the dashboard
+    - You can rejoin later using the code (if you have it)
+  </Step>
+</Steps>
+
+<Info>
+When a coordinator leaves, the longest-standing member automatically inherits the coordinator role. This prevents apartments from becoming "orphaned" without a coordinator.
+</Info>
+
+## Transferring Apartment Ownership
+
+There are two ways to transfer apartment control:
+
+### Method 1: Promote and Stay
+
+1. Coordinator promotes another member
+2. Both remain in the apartment
+3. Original coordinator becomes a regular member
+4. New coordinator has full control
+
+### Method 2: Leave and Auto-Promote
+
+1. Coordinator leaves the apartment
+2. System automatically promotes the oldest member
+3. Original coordinator is no longer a member
+4. They can rejoin later as a regular member (if they have the code)
+
+<Tip>
+If you want to transfer ownership to a specific person, use Method 1 (promote them directly). Method 2 (leaving) transfers to the oldest member, which may not be who you want.
+</Tip>
+
+## Multiple Apartments and Roles
+
+Users can be members of multiple apartments simultaneously:
+
+- You might be a **coordinator** in one apartment
+- And a **regular member** in another apartment
+- Roles are independent per apartment
+- Switch apartments using the apartment selection screen
+
+<Note>
+Your permissions change based on which apartment is currently active in your session.
+</Note>
+
+## Viewing Your Role
+
+To check your role in the current apartment:
+
+1. Go to the **Kideak** (Members) page
+2. Find your own member card
+3. Look for the badge:
+   - **"Koordinatzailea"** with shield icon = Coordinator
+   - **"Kidea"** with user icon = Regular Member
+
+## Role-Based UI Changes
+
+The interface adapts based on your role:
+
+### Coordinators See:
+- Three-dot menu (⋮) at top right of members page (apartment actions)
+- Three-dot menu on each member card (member management)
+- Edit and Delete apartment options
+- Promote and Remove member options
+
+### Regular Members See:
+- No apartment management menu
+- No member action menus
+- Only the "Leave apartment" button for self-removal
+
+<Info>
+The UI uses the `isCurrentUserAdmin` prop (passed from backend) to conditionally render coordinator-only features.
+</Info>
+
+## Security and Authorization
+
+### Backend Protection
+
+Role permissions are enforced at multiple levels:
+
+1. **Route Middleware**: All apartment routes require authentication
+2. **Policy Gates**: Coordinator actions use Laravel's Gate authorization
+   - `Gate::authorize('update', $pisua)` checks coordinator status
+   - `Gate::authorize('delete', $pisua)` for destructive actions
+3. **Controller Checks**: Additional manual verification in controller methods
+
+### Key Security Points
+
+<Warning>
+Never rely on frontend UI hiding alone for security. All coordinator actions are verified in the backend:
+
+- Edit apartment: Checks `Gate::authorize('update')` (line 128, 134)
+- Delete apartment: Checks `Gate::authorize('delete')` (line 160)
+- Promote member: Checks `Gate::authorize('update')` (line 225)
+- Remove member: Checks `Gate::authorize('update')` (line 245)
+</Warning>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Choose Coordinators Wisely" icon="user-shield">
+    Only promote trusted, responsible members who will manage the apartment fairly.
+  </Card>
+  
+  <Card title="Have a Backup Coordinator" icon="users-gear">
+    Consider promoting a second person if the main coordinator becomes unavailable.
+  </Card>
+  
+  <Card title="Communicate Changes" icon="bullhorn">
+    Inform all members before making role changes, removing people, or editing apartment details.
+  </Card>
+  
+  <Card title="Document Decisions" icon="file-pen">
+    Keep notes about why members were removed or roles changed (outside the app).
+  </Card>
+  
+  <Card title="Rotate Coordinators" icon="rotate">
+    Consider rotating coordinator duties periodically for shared responsibility.
+  </Card>
+  
+  <Card title="Secure Your Code" icon="lock">
+    Change the apartment code if you remove someone on bad terms.
+  </Card>
+</CardGroup>
+
+## Common Questions
+
+<AccordionGroup>
+  <Accordion title="Can there be multiple coordinators?">
+    No. The current system design allows only ONE coordinator per apartment.
+    
+    When you promote someone, you automatically become a regular member.
+    
+    For shared administration:
+    - Coordinate decisions in person
+    - Transfer coordinator role temporarily when needed
+    - Or have one coordinator consult others before actions
+  </Accordion>
+  
+  <Accordion title="What happens if the coordinator abandons the apartment?">
+    If the coordinator stops using the app but doesn't formally leave:
+    - They retain coordinator status indefinitely
+    - Other members cannot promote themselves
+    - Members can leave and create a new apartment
+    - Or contact support to resolve the issue
+    
+    There's no automatic timeout or inactivity demotion.
+  </Accordion>
+  
+  <Accordion title="Can I remove myself as a regular member?">
+    Yes! Regular members can remove themselves using the "Atera pisutik" (Leave apartment) button.
+    
+    This is different from coordinators removing members - you're removing yourself voluntarily.
+  </Accordion>
+  
+  <Accordion title="Can a coordinator remove themselves without leaving?">
+    Not directly. To step down as coordinator:
+    
+    **Option 1**: Promote another member (you become regular)
+    **Option 2**: Leave the apartment (oldest member becomes coordinator)
+    
+    You cannot demote yourself to regular while staying without promoting someone else.
+  </Accordion>
+  
+  <Accordion title="What happens to tasks/expenses if a member is removed?">
+    - Tasks assigned to removed members remain in the database
+    - Expenses paid by removed members remain in records
+    - Debt calculations still include their contributions
+    - You may need to manually reassign tasks or adjust expenses
+    
+    The system does NOT automatically clean up data from removed members.
+  </Accordion>
+</AccordionGroup>
+
+## Technical Implementation
+
+### Role Storage
+- **Field**: `mota` in the `pisua_user` pivot table
+- **Values**: `'koordinatzailea'` or `'normala'`
+- **Relationship**: Many-to-many between `users` and `pisua` tables
+
+### Key Controller Methods
+- **Promote**: `PisoController@promoteMember` (line 219)
+- **Remove**: `PisoController@removeMember` (line 240)
+- **Leave**: `PisoController@atera` (line 262)
+- **Auto-succession**: In `atera()` method (lines 279-290)
+
+### Authorization
+- **Policy**: Likely defined in `app/Policies/PisoPolicy.php`
+- **Gate Check**: `Gate::authorize('update', $pisua)` verifies coordinator status
+- **Implementation**: Checks if authenticated user's pivot `mota == 'koordinatzailea'`
+
+### UI Detection
+```php
+// Backend: app/Http/Controllers/PisoController.php:209-210
+$currentUser = $pisua->inquilinos->find(auth()->id());
+$isCurrentUserAdmin = $currentUser && $currentUser->pivot->mota === 'koordinatzailea';
+```
+
+```typescript
+// Frontend: resources/js/pages/pisuaIkusi/pisua_ikusi.tsx:88
+{isCurrentUserAdmin && (
+  // Coordinator-only UI elements
+)}
+```

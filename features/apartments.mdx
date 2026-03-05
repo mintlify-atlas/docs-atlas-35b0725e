@@ -1,0 +1,337 @@
+---
+title: 'Apartment Management'
+description: 'Create, join, and manage shared apartments with unique access codes'
+icon: 'building'
+---
+
+## Overview
+
+The Apartment Management feature is the core of 7POINTS.NET, allowing university students to create shared living spaces and manage them collaboratively. Each apartment ("piso" in Basque) has a unique 5-digit code that members use to join.
+
+<CardGroup cols={2}>
+  <Card title="Create Apartments" icon="plus">
+    Generate a new apartment with a unique code and become the coordinator automatically
+  </Card>
+  <Card title="Join Apartments" icon="users">
+    Use a 5-digit code to join existing apartments as a regular member
+  </Card>
+  <Card title="Manage Members" icon="user-gear">
+    View all roommates, promote coordinators, and remove members from the apartment
+  </Card>
+  <Card title="Odoo Integration" icon="cloud">
+    All apartment data syncs with Odoo ERP for centralized management
+  </Card>
+</CardGroup>
+
+## User Workflows
+
+### Creating an Apartment
+
+1. Navigate to **Dashboard** and select "Create Apartment"
+2. Enter the apartment name (e.g., "Dorm 3A")
+3. System generates a unique 5-digit code automatically
+4. User becomes the coordinator with full permissions
+5. Apartment data syncs to Odoo ERP
+
+<Note>
+The coordinator role gives you exclusive permissions to edit apartment settings, promote other coordinators, and remove members.
+</Note>
+
+### Joining an Apartment
+
+1. Click "Join Apartment" from the dashboard
+2. Enter the 5-digit code provided by the coordinator
+3. System validates the code and adds you as a regular member
+4. You're redirected to the apartment dashboard
+
+<Warning>
+If the code doesn't exist, you'll see: "Kode hori ez da existitzen. (El código no existe)"
+</Warning>
+
+### Managing Apartment Members
+
+Coordinators can:
+- **View all members** with their roles and join dates
+- **Promote members** to coordinator status
+- **Remove members** from the apartment
+- **Edit apartment settings** (name and code)
+- **Delete the apartment** entirely
+
+<Info>
+When a coordinator leaves, the oldest remaining member automatically becomes the new coordinator.
+</Info>
+
+## Technical Implementation
+
+### The Piso Model
+
+The apartment is represented by the `Piso` model in Laravel:
+
+```php ~/workspace/source/laravel/app/Models/Piso.php
+class Piso extends Model
+{
+    protected $table = 'pisua';
+
+    protected $fillable = [
+        'izena',        // Apartment name
+        'kodigoa',      // Unique 5-digit code
+        'odoo_id',      // Odoo ERP ID for sync
+        'synced',       // Sync status
+        'sync_error',   // Error messages from sync
+        'user_id',      // Creator ID
+    ];
+
+    // Relationship with creator
+    public function user(){
+        return $this->belongsTo(User::class);
+    }
+
+    // Relationship with all members
+    public function inquilinos(){
+        return $this->belongsToMany(User::class, 'piso_user', 'piso_id', 'user_id')
+        ->withPivot('mota')  // 'koordinatzailea' or 'normala'
+        ->withTimestamps();
+    }
+
+    public function gastos(){
+        return $this->hasMany(Gasto::class, 'IdPiso', 'id');
+    }
+
+    public function ordainketak(){
+        return $this->hasMany(Ordainketa::class);
+    }
+}
+```
+
+### Key Model Features
+
+- **Many-to-Many Relationship**: Users and apartments are connected via the `piso_user` pivot table
+- **Role System**: The `mota` pivot column stores either `'koordinatzailea'` (coordinator) or `'normala'` (regular member)
+- **Odoo Sync**: Every apartment has `odoo_id`, `synced`, and `sync_error` fields for ERP integration
+
+### API Endpoints
+
+#### Create Apartment
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::post('/pisua', [PisoController::class, 'store'])
+    ->name('pisua.store');
+```
+
+**Implementation:**
+
+```php ~/workspace/source/laravel/app/Http/Controllers/PisoController.php
+public function store(Request $request)
+{
+    $validate = $request->validate([
+        'pisuaren_izena' => 'required|string|max:255',
+    ]);
+
+    $user = $request->user();
+
+    // Generate unique 5-digit code
+    $kodigoa = null;
+    do {
+        $posibleKodigoa = str_pad(rand(0, 99999), 5, '0', STR_PAD_LEFT);
+        if (!Piso::where('kodigoa', $posibleKodigoa)->exists()) {
+            $kodigoa = $posibleKodigoa;
+        }
+    } while (!$kodigoa);
+
+    $pisua = Piso::create([
+        'izena' => $validate['pisuaren_izena'],
+        'kodigoa' => $kodigoa,
+        'odoo_id' => null,
+        'user_id' => $user->id,
+    ]);
+
+    // Attach creator as coordinator
+    $pisua->inquilinos()->attach($user->id, ['mota' => 'koordinatzailea']);
+
+    // Sync to Odoo
+    Bus::chain([
+        new SyncUserToOdoo($user),
+        new SyncPisoToOdoo($pisua),
+        new SyncInquilinoToOdoo($user, $pisua)
+    ])->dispatch();
+
+    return redirect()->route('dashboard');
+}
+```
+
+#### Join Apartment
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::post('/pisua/batu', [PisoController::class, 'join'])
+    ->name('pisua.join');
+```
+
+**Implementation:**
+
+```php ~/workspace/source/laravel/app/Http/Controllers/PisoController.php
+public function join(Request $request)
+{
+    $validated = $request->validate([
+        'kodigoa' => 'required|string|exists:pisua,kodigoa',
+    ], [
+        'kodigoa.exists' => 'Kode hori ez da existitzen.',
+    ]);
+
+    $piso = Piso::where('kodigoa', $validated['kodigoa'])->first();
+
+    // Add user as regular member (prevents duplicates)
+    $request->user()->pisuak()->syncWithoutDetaching([
+        $piso->id => ['mota' => 'normala']
+    ]);
+
+    SyncInquilinoToOdoo::dispatch($request->user(), $piso);
+
+    return redirect()->route('dashboard');
+}
+```
+
+### Member Management Endpoints
+
+#### Promote Member to Coordinator
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::put('/pisua/{pisuaId}/kidea/{memberId}/promote', 
+    [PisoController::class, 'promoteMember']);
+```
+
+**Implementation (see PisoController.php:219):**
+
+```php
+public function promoteMember(Request $request, $pisuaId, $memberId)
+{
+    $pisua = Piso::findOrFail($pisuaId);
+    Gate::authorize('update', $pisua);  // Only coordinators
+
+    return DB::transaction(function () use ($request, $pisua, $memberId) {
+        $currentUserId = $request->user()->id;
+        
+        // Demote current coordinator
+        $pisua->inquilinos()->updateExistingPivot($currentUserId, 
+            ['mota' => 'normala']);
+        
+        // Promote new coordinator
+        $pisua->inquilinos()->updateExistingPivot($memberId, 
+            ['mota' => 'koordinatzailea']);
+        
+        return back();
+    });
+}
+```
+
+#### Remove Member
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::delete('/pisua/{pisuaId}/kidea/{memberId}/remove', 
+    [PisoController::class, 'removeMember']);
+```
+
+**Implementation (see PisoController.php:240):**
+
+```php
+public function removeMember($pisuaId, $memberId)
+{
+    $pisua = Piso::findOrFail($pisuaId);
+    
+    // Allow self-removal or require coordinator permission
+    if ($memberId != auth()->id()) {
+        Gate::authorize('update', $pisua);
+    }
+    
+    $pisua->inquilinos()->detach($memberId);
+    
+    return back();
+}
+```
+
+## Odoo ERP Integration
+
+### Sync Jobs
+
+All apartment operations trigger background jobs that sync with Odoo:
+
+- **SyncPisoToOdoo**: Creates/updates apartment in Odoo
+- **SyncEditPisoToOdoo**: Updates apartment details
+- **SyncDeletePisoFrom**: Removes apartment from Odoo
+- **SyncInquilinoToOdoo**: Syncs member relationships
+
+### Job Chaining
+
+When creating an apartment, jobs are chained to ensure proper order:
+
+```php
+Bus::chain([
+    new SyncUserToOdoo($user),           // 1. Sync user first
+    new SyncPisoToOdoo($pisua),          // 2. Then apartment
+    new SyncInquilinoToOdoo($user, $pisua) // 3. Finally the relationship
+])->dispatch();
+```
+
+<Info>
+The `odoo_id` field stores the external ID, while `synced` tracks sync status and `sync_error` captures any failures.
+</Info>
+
+## Frontend Components
+
+### Member View Component
+
+The member management UI is built with React and Inertia.js:
+
+```tsx ~/workspace/source/laravel/resources/js/pages/pisuaIkusi/pisua_ikusi.tsx
+interface Kidea {
+    id: number;
+    name: string;
+    email: string;
+    pivot: {
+        mota: string;  // 'koordinatzailea' or 'normala'
+        created_at: string;
+    };
+}
+
+interface Pisua {
+    id: number;
+    izena: string;
+    kodigoa: string;
+}
+
+export default function PisuaIkusi({ 
+    pisua, 
+    kideak, 
+    isCurrentUserAdmin 
+}: Props) {
+    // Members displayed in a grid
+    // Coordinators have special badge
+    // Three-dot menu for management actions
+}
+```
+
+### Key UI Features
+
+- **Color-coded roles**: Coordinators have indigo badges, regular members have gray
+- **Dropdown menus**: Three-dot menu for promote/remove actions (coordinators only)
+- **Code sharing**: Click to copy the apartment code
+- **Responsive design**: Grid layout adapts to mobile and desktop
+
+## Best Practices
+
+<Tip>
+**Security**: Always use Laravel's Gate authorization to verify coordinator permissions before allowing member management actions.
+</Tip>
+
+<Tip>
+**Code Generation**: The 5-digit code generation uses a loop to ensure uniqueness. Consider adding a maximum retry limit in production.
+</Tip>
+
+<Tip>
+**Coordinator Succession**: When the coordinator leaves, the system automatically promotes the oldest member. Test this edge case thoroughly.
+</Tip>
+
+## Related Features
+
+- [Expense Tracking](/features/expenses) - Apartments track shared expenses
+- [Task Management](/features/tasks) - Apartments have shared task lists
+- [Members](/features/members) - Detailed member role management

@@ -1,0 +1,442 @@
+---
+title: 'Task Management'
+description: 'Create, assign, and track household tasks with calendar views and status tracking'
+icon: 'list-check'
+---
+
+## Overview
+
+The Task Management feature ("Zereginak" in Basque) helps roommates coordinate household chores and responsibilities. Tasks can be assigned to specific members with start dates and tracked through three states: To Do, In Progress, and Completed.
+
+<CardGroup cols={2}>
+  <Card title="Create Tasks" icon="plus">
+    Add tasks with descriptions, assignments, and start dates
+  </Card>
+  <Card title="Assign to Roommates" icon="user-check">
+    Designate which member is responsible for each task
+  </Card>
+  <Card title="Calendar View" icon="calendar">
+    Visualize tasks on a calendar with start dates
+  </Card>
+  <Card title="Status Tracking" icon="tasks">
+    Track tasks through pending, in progress, and completed states
+  </Card>
+</CardGroup>
+
+## User Workflows
+
+### Creating a Task
+
+1. Navigate to **Zereginak** (Tasks) from the dashboard
+2. Click "Create Task" button
+3. Fill in task details:
+   - **Name** (izena): What needs to be done (e.g., "Take out trash")
+   - **Description** (deskripzioa): Optional details about the task
+   - **Assigned to** (erabiltzailea): Select which roommate is responsible
+   - **Start Date** (hasiera_data): When the task should begin
+4. Submit - task is created and synced to Odoo
+
+<Note>
+Tasks are automatically associated with the currently selected apartment. Members can only see tasks for their apartment.
+</Note>
+
+### Task States
+
+Each task has one of three states:
+
+- **Egiteko** (To Do): Not yet started - shown with red indicator and ❌ icon
+- **Egiten** (In Progress): Currently being worked on - shown with blue indicator and 🕐 icon
+- **Eginda** (Completed): Finished - shown with green indicator and ✓ icon
+
+### Viewing Tasks
+
+Two viewing modes are available:
+
+**List View** (default):
+- Shows all tasks in a scrollable list
+- Color-coded left border indicates status
+- Displays task name, assigned member, and start date
+- Click to expand and see full description
+- Three-dot menu for edit/delete actions
+
+**Calendar View**:
+- Toggle to calendar mode to see tasks by date
+- Tasks appear on their start dates
+- Color-coded by status (red/blue/green)
+- Click task to view details
+
+<Info>
+The calendar uses `react-big-calendar` with Basque locale (euskara) for month/day names.
+</Info>
+
+### Editing Tasks
+
+1. Click the three-dot menu (⋮) on any task
+2. Select "Editatu" (Edit)
+3. Modify task details or change status
+4. Update the assigned member if needed
+5. Submit changes - syncs to Odoo
+
+### Deleting Tasks
+
+1. Click the three-dot menu (⋮)
+2. Select "Ezabatu" (Delete)
+3. Confirm deletion
+4. Task is removed from local database and Odoo
+
+## Technical Implementation
+
+### The Zereginak Model
+
+Tasks are represented by the `Zereginak` model:
+
+```php ~/workspace/source/laravel/app/Models/Zereginak.php
+class Zereginak extends Model
+{
+    protected $table = 'zereginak';
+
+    protected $fillable = [
+        'izena',        // Task name
+        'deskripzioa',  // Description
+        'pisua_id',     // Which apartment
+        'egoera',       // Status: 'egiteko', 'egiten', 'eginda'
+        'odoo_id',      // Odoo sync ID
+        'synced',       // Sync status
+        'sync_error'    // Error messages
+    ];
+
+    // Relationship to apartment
+    public function pisua(): BelongsTo
+    {
+        return $this->belongsTo(Piso::class, 'pisua_id');
+    }
+
+    // Many-to-many relationship with users
+    // (Tasks can have multiple assignees)
+    public function erabiltzaileak(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'egin', 'zereginak_id', 'erabiltzailea_id')
+            ->withPivot(['hasiera_data', 'amaiera_data'])
+            ->withTimestamps();
+    }
+}
+```
+
+### Model Structure
+
+- **Task belongs to Piso**: Each task is apartment-specific
+- **Task has many Users**: Many-to-many through `egin` pivot table
+- **Pivot data**: Stores start date (`hasiera_data`) and end date (`amaiera_data`)
+- **Status enum**: Three valid states controlled at database/validation level
+
+## API Endpoints
+
+### View Tasks
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::get('/zereginak', [ZereginakController::class, 'index'])
+    ->name('zereginak.index');
+```
+
+**Implementation:**
+
+```php ~/workspace/source/laravel/app/Http/Controllers/ZereginakController.php
+public function index()
+{
+    $pisuaId = session('pisua_id');
+
+    if (!$pisuaId) {
+        return redirect()->route('pisua.show');
+    }
+
+    // Filter tasks by current apartment only
+    $zereginak = Zereginak::where('pisua_id', $pisuaId)
+        ->with(['erabiltzaileak'])
+        ->get();
+
+    return Inertia::render('Zereginak/Index', [
+        'zereginak' => $zereginak,
+        'pisuaIzena' => session('pisua_izena')
+    ]);
+}
+```
+
+### Create Task
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::post('/zereginak', [ZereginakController::class, 'store'])
+    ->name('zereginak.store');
+```
+
+**Implementation (see ZereginakController.php:63):**
+
+```php
+public function store(Request $request)
+{
+    $pisuaId = session('pisua_id');
+
+    if (!$pisuaId) {
+        return redirect()->route('pisua.show');
+    }
+
+    $validated = $request->validate([
+        'izena' => 'required|string|max:255',
+        'deskripzioa' => 'nullable|string',
+        'erabiltzailea_id' => 'required|exists:users,id',
+        'hasiera_data' => 'required|date',
+    ]);
+
+    // Create task
+    $zeregina = Zereginak::create([
+        'izena' => $validated['izena'],
+        'deskripzioa' => $validated['deskripzioa'],
+        'pisua_id' => $pisuaId,
+        // Default status is 'egiteko'
+    ]);
+
+    // Attach assigned user with start date
+    $zeregina->erabiltzaileak()->attach($validated['erabiltzailea_id'], [
+        'hasiera_data' => $validated['hasiera_data']
+    ]);
+
+    SyncZereginakToOdoo::dispatch($zeregina);
+
+    return redirect()->route('zereginak.index');
+}
+```
+
+### Update Task
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::put('/zereginak/{zeregina}', [ZereginakController::class, 'update'])
+    ->name('zereginak.update');
+```
+
+**Implementation (see ZereginakController.php:127):**
+
+```php
+public function update(Request $request, Zereginak $zeregina)
+{
+    $validated = $request->validate([
+        'izena' => 'required|string|max:255',
+        'deskripzioa' => 'nullable|string',
+        'egoera' => 'required|in:egiteko,egiten,eginda',
+        'hasiera_data' => 'required|date',
+        'erabiltzailea_id' => 'required|exists:users,id',
+    ]);
+
+    // Update task details
+    $zeregina->update([
+        'izena' => $request->izena,
+        'deskripzioa' => $request->deskripzioa,
+        'egoera' => $request->egoera,
+    ]);
+
+    // Update assigned user and date
+    $zeregina->erabiltzaileak()->sync([
+        $request->erabiltzailea_id => ['hasiera_data' => $request->hasiera_data]
+    ]);
+
+    SyncZereginakToOdoo::dispatch($zeregina);
+
+    return redirect()->route('zereginak.index');
+}
+```
+
+### Delete Task
+
+```php ~/workspace/source/laravel/routes/web.php
+Route::delete('/zereginak/{zeregina}', [ZereginakController::class, 'destroy'])
+    ->name('zereginak.destroy');
+```
+
+**Implementation (see ZereginakController.php:157):**
+
+```php
+public function destroy(Zereginak $zeregina)
+{
+    // Security: verify task belongs to current apartment
+    if ($zeregina->pisua_id != session('pisua_id')) {
+        abort(403);
+    }
+
+    $odooId = $zeregina->odoo_id;
+    $zeregina->delete();
+
+    if ($odooId) {
+        SyncDeleteZereginakFromOdoo::dispatch((int) $odooId);
+    }
+
+    return redirect()->route('zereginak.index');
+}
+```
+
+## Odoo Integration
+
+### Task Sync Jobs
+
+All task operations trigger Odoo sync:
+
+- **SyncZereginakToOdoo**: Creates or updates task in Odoo
+- **SyncDeleteZereginakFromOdoo**: Removes task from Odoo
+
+### How Tasks Sync with Odoo
+
+Odoo maintains:
+1. **Task Records**: Full task details with apartment context
+2. **Assignment History**: Who was assigned when
+3. **Status Timeline**: Track state changes over time
+4. **Completion Reports**: Analytics on task completion rates
+
+<Info>
+The `egoera` field (status) is especially important for Odoo reporting and analytics.
+</Info>
+
+## Frontend Components
+
+### Task List Interface
+
+The task UI is built with React and TypeScript:
+
+```tsx ~/workspace/source/laravel/resources/js/pages/Zereginak/Index.tsx
+interface Zeregina {
+    id: number;
+    izena: string;
+    deskripzioa: string;
+    pisua_id: number;
+    erabiltzaileak: Erabiltzailea[];
+    egoera: 'egiteko' | 'egiten' | 'eginda';
+}
+
+interface Erabiltzailea {
+    id: number;
+    name: string;
+    pivot: {
+        hasiera_data: string;
+    };
+}
+
+// Status styling configuration
+const statusStyles = {
+    egiteko: {
+        color: 'bg-red-500',
+        text: 'text-red-600',
+        bg: 'bg-red-50',
+        icon: XCircle,
+        label: 'Egiteko'
+    },
+    egiten: {
+        color: 'bg-blue-500',
+        text: 'text-blue-600',
+        bg: 'bg-blue-50',
+        icon: Clock,
+        label: 'Egiten'
+    },
+    eginda: {
+        color: 'bg-green-500',
+        text: 'text-green-600',
+        bg: 'bg-green-50',
+        icon: CheckCircle2,
+        label: 'Eginda'
+    }
+};
+```
+
+### Calendar View Integration
+
+The calendar uses `react-big-calendar` with Moment.js:
+
+```tsx
+import { Calendar, momentLocalizer } from 'react-big-calendar';
+import moment from 'moment';
+import 'moment/dist/locale/eu';
+
+// Configure for Basque language
+moment.locale('eu');
+const localizer = momentLocalizer(moment);
+
+// Transform tasks into calendar events
+const events = zereginak.map(task => ({
+    title: task.izena,
+    start: new Date(task.erabiltzaileak[0]?.pivot.hasiera_data),
+    end: new Date(task.erabiltzaileak[0]?.pivot.hasiera_data),
+    resource: task
+}));
+```
+
+### Key UI Features
+
+- **Expandable Cards**: Click to expand and see full description
+- **Color-Coded Borders**: Left border color indicates status
+- **Dropdown Menus**: Three-dot menu with edit/delete options
+- **Responsive Grid**: Adapts to mobile and desktop layouts
+- **View Toggle**: Switch between list and calendar views
+- **Status Icons**: Visual indicators for each state (X, clock, checkmark)
+
+### Dropdown Menu Component
+
+```tsx ~/workspace/source/laravel/resources/js/pages/Zereginak/Index.tsx
+const OpcionesMenu = ({ id, onDelete }: OpcionesMenuProps) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // Close on outside click
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+        <div className="relative" ref={menuRef}>
+            <button onClick={() => setIsOpen(!isOpen)}>
+                <MoreVertical className="w-5 h-5" />
+            </button>
+            {isOpen && (
+                <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-xl">
+                    <Link href={`/zereginak/${id}/editatu`}>Editatu</Link>
+                    <button onClick={() => onDelete(id)}>Ezabatu</button>
+                </div>
+            )}
+        </div>
+    );
+};
+```
+
+## Best Practices
+
+<Tip>
+**Security Check**: Always verify that the task belongs to the current apartment before allowing edits or deletes (see line 108-110 in ZereginakController.php).
+</Tip>
+
+<Tip>
+**Session-Based Filtering**: Use the session's `pisua_id` to automatically scope queries to the current apartment, preventing cross-apartment data leaks.
+</Tip>
+
+<Tip>
+**Pivot Data**: Store dates in the pivot table (`egin`) rather than on the task model, as this allows for task reassignment history.
+</Tip>
+
+<Warning>
+The current implementation only shows one assigned user per task. If you need multiple assignees, update the UI to handle the `erabiltzaileak` array (plural).
+</Warning>
+
+## State Transitions
+
+Tasks typically flow through these states:
+
+1. **Created** → `egiteko` (To Do)
+2. **Started** → `egiten` (In Progress)
+3. **Finished** → `eginda` (Completed)
+
+The status can be updated at any time via the edit form. There are no enforced state transition rules - users have full control.
+
+## Related Features
+
+- [Apartments](/features/apartments) - Tasks belong to apartments
+- [Members](/features/members) - Users are assigned to tasks
+- [Odoo Integration](/architecture/odoo-integration) - Task data syncs for reporting
