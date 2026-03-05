@@ -1,0 +1,381 @@
+---
+title: 'Account Settings'
+description: 'Manage your profile, password, security, and account preferences'
+icon: 'gear'
+---
+
+## Overview
+
+7POINTS.NET provides comprehensive account settings to manage your personal information, security, and preferences. Access your settings by clicking your profile icon in the navigation bar and selecting **Settings** (Ezarpenak).
+
+<CardGroup cols={2}>
+  <Card title="Profile Settings" icon="user">
+    Update your name and email address
+  </Card>
+  <Card title="Password Management" icon="key">
+    Change your password securely
+  </Card>
+  <Card title="Two-Factor Authentication" icon="shield-halved">
+    Add an extra layer of security to your account
+  </Card>
+  <Card title="Appearance" icon="palette">
+    Customize the interface theme
+  </Card>
+</CardGroup>
+
+---
+
+## Profile Settings
+
+Manage your basic account information including name and email.
+
+### Accessing Profile Settings
+
+<Steps>
+  <Step title="Navigate to Settings">
+    Click your profile icon in the top navigation bar and select **Settings** or go directly to `/settings/profile`.
+  </Step>
+  <Step title="View Profile Information">
+    You'll see your current name and email address displayed in editable fields.
+  </Step>
+</Steps>
+
+### Updating Your Name
+
+1. In the **Izena** (Name) field, enter your new name
+2. Click **Gorde** (Save)
+3. You'll see a "Gordeta" (Saved) confirmation message
+
+<Note>
+Your name is visible to your apartment roommates and appears in expense records and task assignments.
+</Note>
+
+### Updating Your Email
+
+1. In the **Emaila** (Email) field, enter your new email address
+2. Click **Gorde** (Save)
+3. **Important**: If you change your email, your account will be marked as unverified
+
+<Warning>
+After changing your email, you must verify the new address by clicking the link sent to your new email. You may lose access to some features until verification is complete.
+</Warning>
+
+#### Email Verification
+
+If your email is unverified, you'll see a message:
+
+> "Your email address is unverified. Click here to resend the verification email."
+
+Click the link to receive a new verification email. Check your spam folder if you don't see it within a few minutes.
+
+### Deleting Your Account
+
+<Warning>
+Account deletion is permanent and cannot be undone. All your data, apartment associations, and records will be deleted.
+</Warning>
+
+To delete your account:
+
+<Steps>
+  <Step title="Scroll to Delete Section">
+    At the bottom of the profile settings page, find the **Delete Account** section.
+  </Step>
+  <Step title="Confirm with Password">
+    You must enter your current password to confirm deletion.
+  </Step>
+  <Step title="Delete">
+    Click the delete button. Your account will be immediately removed and you'll be logged out.
+  </Step>
+</Steps>
+
+<Info>
+Before deleting your account, consider:
+- Leaving all apartments you're a member of
+- Settling any outstanding debts
+- Transferring coordinator roles if you're the apartment coordinator
+</Info>
+
+---
+
+## Password Management
+
+Change your password to maintain account security.
+
+### Changing Your Password
+
+Navigate to **Settings > Password** (`/settings/password`):
+
+<Steps>
+  <Step title="Enter Current Password">
+    For security, you must provide your current password first.
+  </Step>
+  <Step title="Enter New Password">
+    Type your new password. It should be strong and unique.
+  </Step>
+  <Step title="Confirm New Password">
+    Re-type your new password to ensure accuracy.
+  </Step>
+  <Step title="Save">
+    Click **Update Password** to apply the change.
+  </Step>
+</Steps>
+
+### Password Requirements
+
+Your password should:
+- Be at least 8 characters long
+- Include a mix of uppercase, lowercase, numbers, and symbols (recommended)
+- Not be a commonly used password
+- Not match your email address
+
+<Tip>
+Use a password manager to generate and store strong, unique passwords for all your accounts.
+</Tip>
+
+### Rate Limiting
+
+<Note>
+Password change attempts are rate-limited to 6 attempts per minute to prevent brute-force attacks. If you exceed this limit, wait one minute before trying again.
+</Note>
+
+---
+
+## Two-Factor Authentication (2FA)
+
+Add an extra layer of security to your account with two-factor authentication.
+
+### What is Two-Factor Authentication?
+
+Two-factor authentication (2FA) requires two forms of verification when logging in:
+1. **Something you know** - Your password
+2. **Something you have** - A code from your phone or authenticator app
+
+Even if someone obtains your password, they won't be able to access your account without the second factor.
+
+### Setting Up 2FA
+
+Navigate to **Settings > Two-Factor** (`/settings/two-factor`):
+
+<Steps>
+  <Step title="Enable Two-Factor Authentication">
+    Click the **Enable** button on the two-factor authentication page.
+  </Step>
+  <Step title="Scan QR Code">
+    Use an authenticator app (like Google Authenticator, Authy, or 1Password) to scan the displayed QR code.
+  </Step>
+  <Step title="Save Recovery Codes">
+    You'll receive recovery codes. Store these securely - you'll need them if you lose access to your authenticator device.
+  </Step>
+  <Step title="Confirm Setup">
+    Enter a code from your authenticator app to confirm the setup is working correctly.
+  </Step>
+</Steps>
+
+### Using 2FA to Log In
+
+Once enabled, logging in requires two steps:
+
+1. Enter your email and password as usual
+2. Enter the 6-digit code from your authenticator app when prompted
+
+The code changes every 30 seconds, so enter it promptly.
+
+### Recovery Codes
+
+<Warning>
+Store your recovery codes in a secure location. If you lose your authenticator device without recovery codes, you may permanently lose access to your account.
+</Warning>
+
+Recovery codes can be used instead of authenticator codes to log in. Each code can only be used once.
+
+To use a recovery code:
+1. On the 2FA login screen, click "Use a recovery code"
+2. Enter one of your saved recovery codes
+3. Log in and immediately regenerate new recovery codes
+
+### Disabling 2FA
+
+If you need to disable two-factor authentication:
+
+<Steps>
+  <Step title="Go to Two-Factor Settings">
+    Navigate to `/settings/two-factor`
+  </Step>
+  <Step title="Confirm Your Password">
+    Enter your password to verify your identity
+  </Step>
+  <Step title="Disable">
+    Click **Disable Two-Factor Authentication**
+  </Step>
+</Steps>
+
+<Tip>
+We strongly recommend keeping 2FA enabled, especially if you're a coordinator managing apartment finances.
+</Tip>
+
+---
+
+## Appearance Settings
+
+Customize the visual theme of 7POINTS.NET to match your preferences.
+
+### Accessing Appearance Settings
+
+Navigate to **Settings > Appearance** (`/settings/appearance`).
+
+### Theme Options
+
+Choose between different visual themes:
+
+- **Light Mode** - Bright interface with dark text on light backgrounds
+- **Dark Mode** - Reduced eye strain with light text on dark backgrounds
+- **System Default** - Automatically matches your device's theme settings
+
+<Info>
+Theme preferences are saved to your account and sync across all devices where you're logged in.
+</Info>
+
+### Changing Your Theme
+
+1. Go to Appearance settings
+2. Select your preferred theme (Light, Dark, or System)
+3. The interface updates immediately - no save button needed
+
+<Tip>
+Dark mode is particularly useful when using 7POINTS.NET at night or in low-light environments.
+</Tip>
+
+---
+
+## Account Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use a Strong, Unique Password">
+    Never reuse passwords across different websites. If one site is compromised, attackers can access your other accounts. Use a password manager to generate and store unique passwords.
+  </Accordion>
+
+  <Accordion title="Enable Two-Factor Authentication">
+    2FA significantly reduces the risk of unauthorized access. Even if your password is compromised, attackers still can't access your account without the second factor.
+  </Accordion>
+
+  <Accordion title="Keep Your Email Secure">
+    Your email is the key to password recovery. Use a strong, unique password for your email account and enable 2FA there as well.
+  </Accordion>
+
+  <Accordion title="Verify Email Changes">
+    Always verify your email immediately after changing it. Unverified emails can lock you out of important features.
+  </Accordion>
+
+  <Accordion title="Review Recovery Codes">
+    Store 2FA recovery codes in a secure location separate from your authenticator device. Consider printing them and storing them in a safe place.
+  </Accordion>
+
+  <Accordion title="Log Out on Shared Devices">
+    If you access 7POINTS.NET on a shared computer, always log out when finished to prevent unauthorized access.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Settings Navigation
+
+All settings pages are accessible from the main settings menu:
+
+| Setting | URL | Purpose |
+|---------|-----|---------|
+| Profile | `/settings/profile` | Edit name, email, delete account |
+| Password | `/settings/password` | Change password |
+| Two-Factor | `/settings/two-factor` | Enable/disable 2FA |
+| Appearance | `/settings/appearance` | Change theme (light/dark mode) |
+
+<Note>
+All settings pages require you to be logged in. If your session expires, you'll be redirected to the login page.
+</Note>
+
+---
+
+## Technical Details
+
+### Profile Update API
+
+**Endpoint**: `PATCH /settings/profile`
+
+**Request Body**:
+```json
+{
+  "name": "New Name",
+  "email": "newemail@example.com"
+}
+```
+
+**Response**: Redirects to profile edit page with success status
+
+### Password Update API
+
+**Endpoint**: `PUT /settings/password`
+
+**Request Body**:
+```json
+{
+  "current_password": "old_password",
+  "password": "new_password",
+  "password_confirmation": "new_password"
+}
+```
+
+**Rate Limit**: 6 requests per minute (enforced via `throttle:6,1` middleware)
+
+### Account Deletion API
+
+**Endpoint**: `DELETE /settings/profile`
+
+**Request Body**:
+```json
+{
+  "password": "current_password"
+}
+```
+
+**Effect**: 
+- Logs out user
+- Deletes user record (cascading deletes apartments if sole member)
+- Invalidates session
+- Redirects to homepage
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="I forgot my password">
+    Use the **Forgot Password** link on the login page. You'll receive an email with a password reset link. Click it to set a new password.
+  </Accordion>
+
+  <Accordion title="Email verification link expired">
+    Go to your profile settings. If your email is unverified, you'll see a link to resend the verification email. Click it to receive a new link.
+  </Accordion>
+
+  <Accordion title="I lost my 2FA device">
+    Use a recovery code to log in. Once logged in, go to two-factor settings to disable 2FA, then set it up again with a new device. If you don't have recovery codes, contact support.
+  </Accordion>
+
+  <Accordion title="Password change says 'current password incorrect'">
+    Double-check that you're typing your current password correctly. Remember passwords are case-sensitive. If you've forgotten it, use the password reset feature instead.
+  </Accordion>
+
+  <Accordion title="Can't delete my account">
+    Account deletion requires your correct password. If you've forgotten it, reset your password first, then try deletion again.
+  </Accordion>
+
+  <Accordion title="Theme not changing">
+    Ensure JavaScript is enabled in your browser. Try refreshing the page. If using System theme, check your operating system's theme settings.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Related Documentation
+
+- [Member Roles](/guides/member-roles) - Understanding user permissions in apartments
+- [Authentication API](/api/authentication) - Technical details on login/registration
+- [Deployment Security](/deployment/monitoring) - Security best practices for self-hosted instances
