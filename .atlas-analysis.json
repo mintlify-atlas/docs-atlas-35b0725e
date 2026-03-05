@@ -1,0 +1,119 @@
+{
+  "projectType": "saas",
+  "projectName": "7POINTS.NET (Pisukide)",
+  "projectDescription": "A shared apartment management platform for university students to organize tasks, track expenses, and coordinate living together.",
+  "theme": "almond",
+  "primaryColor": "#ef7025",
+  "lightColor": "#eec9bc",
+  "darkColor": "#4fa1ab",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/apartments",
+              "features/expenses",
+              "features/tasks",
+              "features/members"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/creating-apartment",
+              "guides/joining-apartment",
+              "guides/managing-expenses",
+              "guides/task-management",
+              "guides/member-roles"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/laravel-backend",
+              "architecture/react-frontend",
+              "architecture/odoo-integration",
+              "architecture/database-schema"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/apartments",
+              "api/expenses",
+              "api/tasks",
+              "api/members"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Deployment",
+        "groups": [
+          {
+            "group": "Setup",
+            "pages": [
+              "deployment/docker",
+              "deployment/environment",
+              "deployment/database"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "deployment/monitoring",
+              "deployment/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Shared apartment management with multi-user access",
+    "Expense tracking and automatic debt calculation",
+    "Task assignment with calendar-based scheduling",
+    "Role-based access control (coordinators and members)",
+    "Odoo ERP integration for financial management",
+    "Real-time synchronization across roommates",
+    "Multi-language support (Basque, Spanish)",
+    "Docker-based deployment architecture"
+  ],
+  "publicApiSurface": [
+    "POST /pisua - Create new apartment",
+    "POST /pisua/batu - Join existing apartment",
+    "GET /pisua/kideak - Get apartment members",
+    "POST /gastuak/addGastua - Add expense",
+    "GET /gastos/{idPisua}/{idErabiltzailea} - Get expenses",
+    "POST /pagos/saldar - Settle debts",
+    "GET /zereginak - List tasks",
+    "POST /zereginak - Create task",
+    "PUT /zereginak/{zeregina} - Update task",
+    "DELETE /zereginak/{zeregina} - Delete task",
+    "PUT /pisua/{pisuaId}/kidea/{memberId}/promote - Promote member to coordinator",
+    "DELETE /pisua/{pisuaId}/kidea/{memberId}/remove - Remove member from apartment"
+  ]
+}
